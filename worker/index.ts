@@ -42,7 +42,10 @@ const worker = {
     const response = new Response(handled.body, handled);
     response.headers.set("X-Content-Type-Options", "nosniff");
     response.headers.set("Referrer-Policy", "same-origin");
-    if (new URL(request.url).pathname.startsWith("/api/"))
+    if (
+      new URL(request.url).pathname.startsWith("/api/") &&
+      !response.headers.has("Cache-Control")
+    )
       response.headers.set("Cache-Control", "no-store");
     return response;
   },

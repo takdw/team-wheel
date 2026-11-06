@@ -5,11 +5,15 @@ export interface Person {
   active: boolean;
   count: number;
   lastPickedAt: string | null;
+  color: string | null;
+  photoUrl: string | null;
 }
 export interface Candidate {
   id: string;
   name: string;
   probability: number;
+  // Older saved spins predate custom colors.
+  color?: string;
 }
 export interface Pick {
   sequence: number;
@@ -48,6 +52,7 @@ export function getCandidates(people: Person[], mode: Mode): Candidate[] {
     id: person.id,
     name: person.name,
     probability: weights[index] / total,
+    color: personColor(person.id, person.color),
   }));
 }
 
@@ -85,10 +90,30 @@ export const palette = [
   "#e8b8aa",
   "#c5c2de",
 ];
-export function personColor(id: string): string {
+export function personColor(id: string, color?: string | null): string {
+  if (color) return color;
   let hash = 0;
   for (const character of id) hash = (hash * 31 + character.charCodeAt(0)) | 0;
   return palette[(hash >>> 0) % palette.length];
+}
+export function textColor(background: string): string {
+  function luminance(hex: string) {
+    const channels = [1, 3, 5].map((offset) => {
+      const channel = parseInt(hex.slice(offset, offset + 2), 16) / 255;
+      return channel <= 0.04045
+        ? channel / 12.92
+        : ((channel + 0.055) / 1.055) ** 2.4;
+    });
+    return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+  }
+  const value = luminance(background);
+  function contrast(color: string) {
+    const other = luminance(color);
+    return (Math.max(value, other) + 0.05) / (Math.min(value, other) + 0.05);
+  }
+  if (contrast("#253d33") >= 4.5) return "#253d33";
+  if (contrast("#fffefa") >= 4.5) return "#fffefa";
+  return value > 0.179 ? "#000000" : "#ffffff";
 }
 export function candidateMidpoint(candidates: Candidate[], id: string): number {
   let offset = 0;

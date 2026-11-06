@@ -1,6 +1,6 @@
 # Team Wheel
 
-A shared team wheel with random and balanced selection, per-person counters, and persistent pick history. Built with TypeScript, React, Vinext, Cloudflare Workers, and D1 (hosted SQLite).
+A shared team wheel with random and balanced selection, per-person counters, custom colors, profile photos, and persistent pick history. Built with TypeScript, React, Vinext, Cloudflare Workers, and D1 (hosted SQLite).
 
 ## Run locally
 
@@ -54,6 +54,14 @@ CLOUDFLARE_D1_DATABASE_ID='00000000-0000-4000-8000-000000000001' npm run deploy 
 ### Sites preview
 
 The `.openai/hosting.json` manifest retains the project's Sites identity and `DB` binding. Sites provisions its own D1 database and applies the same migrations. Its preview uses platform access controls with `ACCESS_MODE=sites`; keep this value in Sites runtime settings. Independent Cloudflare deployments explicitly clear that mode and use `TEAM_PASSWORD` instead. Hosting deployments have separate databases; a Sites preview does not automatically transfer its data to an independently deployed Worker.
+
+## Colors and profile photos
+
+Choose **Manage → Edit** beside a teammate to change their name, choose a preset or custom color, and upload a profile photo. Save the changes to share them with the team. **Use default color** restores the automatic color; **Remove** clears the photo and brings back initials.
+
+Photos accept JPG, PNG, and WebP files up to 10 MB. The browser center-crops and resizes each photo to 128×128 before saving it (maximum 48 KB). The database stores only this compact version. Photos are served through the authenticated app with versioned, private cache headers; roster refreshes contain photo URLs rather than image payloads. No additional storage service is required. Labels adapt to custom colors for contrast.
+
+The roster, wheel, winner, and pick history show the current profile photo. Historical names and the colors used for past spins remain recorded in saved selections.
 
 ## Selection rules
 

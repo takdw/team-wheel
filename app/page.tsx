@@ -25,6 +25,7 @@ import {
   getCandidates,
   palette,
   personColor,
+  textColor,
   type Candidate,
   type HistoryPage,
   type Mode,
@@ -33,6 +34,8 @@ import {
   type SpinResult,
 } from "@/lib/wheel";
 import { animateWheel } from "@/lib/motion";
+import { Avatar } from "./components/avatar";
+import { PersonEditor } from "./components/person-editor";
 
 class RequestError extends Error {
   constructor(
@@ -80,22 +83,14 @@ function dateLabel(value: string) {
     minute: "2-digit",
   }).format(new Date(value));
 }
-function initials(name: string) {
-  return name
-    .trim()
-    .split(/\s+/u)
-    .slice(0, 2)
-    .map((part) => Array.from(part)[0])
-    .join("")
-    .toLocaleUpperCase();
-}
-
 function Wheel({
   candidates,
+  people,
   outcome,
   onFinish,
 }: {
   candidates: Candidate[];
+  people: Person[];
   outcome: SpinResult | null;
   onFinish: () => void;
 }) {
@@ -124,13 +119,16 @@ function Wheel({
       rotor.current.style.transform = "rotate(0deg)";
     }
   }, [outcome]);
-  const entries = candidates.length
+  const entries: Candidate[] = candidates.length
     ? candidates
     : palette.map((_, index) => ({
         id: `empty-${index}`,
         name: "",
         probability: 1 / 8,
       }));
+  const portraits = new Map(
+    people.map((person) => [person.id, person.photoUrl]),
+  );
   let offset = 0;
   return (
     <div className={`wheel-wrap ${candidates.length ? "" : "wheel-empty"}`}>
@@ -146,7 +144,7 @@ function Wheel({
           aria-label={
             candidates.length
               ? `Wheel with ${candidates.length} ${candidates.length === 1 ? "person" : "people"}. Individual odds are shown in Your team.`
-              : "Your wheel is waiting for teammates."
+              : "Add a teammate to start."
           }
         >
           <circle cx="260" cy="260" r="255" fill="#f4f2ec" />
@@ -162,43 +160,57 @@ function Wheel({
               y2 = 260 - radius * Math.cos(end);
             const degrees = (mid * 180) / Math.PI - 90;
             const left = Math.sin(mid) < 0;
+            const color = personColor(candidate.id, candidate.color);
+            const photoUrl = portraits.get(candidate.id);
+            const showPhoto = photoUrl && candidate.probability >= 0.05;
+            const labelRadius = showPhoto ? 176 : 213;
+            const labelLimit = showPhoto ? 14 : entries.length > 14 ? 11 : 18;
             const visibleName =
-              Array.from(candidate.name)
-                .slice(0, entries.length > 14 ? 11 : 18)
-                .join("") +
-              (Array.from(candidate.name).length >
-              (entries.length > 14 ? 11 : 18)
-                ? "…"
-                : "");
+              Array.from(candidate.name).slice(0, labelLimit).join("") +
+              (Array.from(candidate.name).length > labelLimit ? "…" : "");
             return (
               <g key={candidate.id}>
                 {candidate.probability > 0.9999 ? (
-                  <circle
-                    cx="260"
-                    cy="260"
-                    r={radius}
-                    fill={personColor(candidate.id)}
-                  />
+                  <circle cx="260" cy="260" r={radius} fill={color} />
                 ) : (
                   <path
                     d={`M260 260 L${x1} ${y1} A${radius} ${radius} 0 ${end - start > Math.PI ? 1 : 0} 1 ${x2} ${y2} Z`}
-                    fill={
-                      candidates.length
-                        ? personColor(candidate.id)
-                        : palette[index]
-                    }
+                    fill={candidates.length ? color : palette[index]}
                     stroke="#f7f6f0"
                     strokeWidth="2"
                   />
                 )}
                 {candidate.name && candidate.probability > 0.025 && (
                   <g transform={`translate(260 260) rotate(${degrees})`}>
+                    {showPhoto && (
+                      <>
+                        <defs>
+                          <clipPath
+                            id={`photo-${candidate.id}`}
+                            clipPathUnits="userSpaceOnUse"
+                          >
+                            <circle cx="208" cy="0" r="21" />
+                          </clipPath>
+                        </defs>
+                        <circle cx="208" cy="0" r="23" fill="#fffefa" />
+                        <image
+                          href={photoUrl}
+                          x="187"
+                          y="-21"
+                          width="42"
+                          height="42"
+                          preserveAspectRatio="xMidYMid slice"
+                          clipPath={`url(#photo-${candidate.id})`}
+                        />
+                      </>
+                    )}
                     <text
-                      x={left ? -213 : 213}
+                      x={left ? -labelRadius : labelRadius}
                       y="6"
                       textAnchor={left ? "start" : "end"}
                       transform={left ? "rotate(180)" : undefined}
                       className="wheel-label"
+                      style={{ fill: textColor(color) }}
                     >
                       {visibleName}
                     </text>
@@ -223,59 +235,11 @@ function Wheel({
       {!candidates.length && (
         <div className="empty-wheel-label">
           <Users size={25} />
-          <strong>Make it your team’s.</strong>
-          <span>Add a name to get started.</span>
+          <strong>Add your team</strong>
+          <span>Enter a name to start.</span>
         </div>
       )}
     </div>
-  );
-}
-
-function NameEditor({
-  person,
-  disabled,
-  onSave,
-  onCancel,
-}: {
-  person: Person;
-  disabled: boolean;
-  onSave: (name: string) => Promise<boolean>;
-  onCancel: () => void;
-}) {
-  const [name, setName] = useState(person.name);
-  return (
-    <form
-      className="name-editor"
-      onSubmit={async (event) => {
-        event.preventDefault();
-        if (await onSave(name.trim())) onCancel();
-      }}
-    >
-      <input
-        aria-label={`New name for ${person.name}`}
-        value={name}
-        onChange={(event) => setName(event.target.value)}
-        maxLength={60}
-        required
-        autoFocus
-      />
-      <button
-        className="icon-button"
-        title="Save name"
-        aria-label="Save name"
-        disabled={disabled || !name.trim()}
-      >
-        <Check size={16} />
-      </button>
-      <button
-        type="button"
-        className="icon-button"
-        aria-label="Cancel rename"
-        onClick={onCancel}
-      >
-        <X size={16} />
-      </button>
-    </form>
   );
 }
 
@@ -353,6 +317,10 @@ export default function Home() {
       Number(b.active) - Number(a.active) ||
       (sortByPicks ? b.count - a.count : 0),
   );
+  const peopleById = new Map(
+    (state?.people ?? []).map((person) => [person.id, person]),
+  );
+  const winner = outcome ? peopleById.get(outcome.pick.personId) : undefined;
   const history = [...(state?.history.items ?? []), ...(older?.items ?? [])];
   const nextCursor = older ? older.nextCursor : state?.history.nextCursor;
   const latestValid = state?.history.items.find((pick) => !pick.undoneAt);
@@ -484,13 +452,7 @@ export default function Home() {
       </header>
       <main>
         <div className="page-heading">
-          <div>
-            <h1>Who’s up next?</h1>
-            <p>A little chance. A turn for everyone.</p>
-          </div>
-          <span className="team-badge">
-            <Users size={16} /> Your team’s wheel
-          </span>
+          <h1>Who’s up next?</h1>
         </div>
         {error && (
           <div className="error-banner" role="alert">
@@ -545,11 +507,12 @@ export default function Home() {
             </div>
             <p className="mode-description">
               {mode === "random"
-                ? "Equal odds. Every person, every spin."
-                : "Fewer past picks. A little more chance."}
+                ? "Equal chance for everyone."
+                : "Higher odds for people with fewer picks."}
             </p>
             <Wheel
               candidates={shownCandidates}
+              people={state?.people ?? []}
               outcome={outcome}
               onFinish={finishSpin}
             />
@@ -562,9 +525,9 @@ export default function Home() {
               {spinning && !revealed ? (
                 <>
                   <span className="result-caption">
-                    {outcome ? "Around it goes…" : "Saving your selection…"}
+                    {outcome ? "Spinning…" : "Saving your selection…"}
                   </span>
-                  <strong>Who will it be?</strong>
+                  <strong>Choosing a teammate</strong>
                 </>
               ) : revealed && outcome ? (
                 <>
@@ -573,22 +536,31 @@ export default function Home() {
                       ? "This pick was undone"
                       : "You’re up next"}
                   </span>
-                  <strong className="winner-name">
-                    {outcome.pick.personName}
-                    <span className="winner-period">.</span>
-                  </strong>
+                  <div className="winner-identity">
+                    {winner && (
+                      <Avatar
+                        id={winner.id}
+                        name={winner.name}
+                        color={winner.color}
+                        photoUrl={winner.photoUrl}
+                        className="winner-avatar"
+                      />
+                    )}
+                    <strong className="winner-name">
+                      {outcome.pick.personName}
+                      <span className="winner-period">.</span>
+                    </strong>
+                  </div>
                 </>
               ) : (
                 <>
                   <strong className="ready-label">
-                    {candidates.length
-                      ? "Ready when you are."
-                      : "Everyone starts somewhere."}
+                    {candidates.length ? "Ready to spin" : "No teammates yet"}
                   </strong>
                   <span className="result-caption">
                     {candidates.length
-                      ? `${candidates.length} ${candidates.length === 1 ? "person" : "people"} in the running.`
-                      : "Your first name is all it takes."}
+                      ? `${candidates.length} ${candidates.length === 1 ? "person" : "people"} active.`
+                      : "Add a name to start."}
                   </span>
                 </>
               )}
@@ -642,7 +614,6 @@ export default function Home() {
                 {manage ? "Done" : "Manage"}
               </button>
             </div>
-            <p className="panel-subtitle">Good company. Fair chances.</p>
             <div className="roster-head">
               <span>Teammate</span>
               <button
@@ -653,7 +624,10 @@ export default function Home() {
               </button>
               <span>Next odds</span>
             </div>
-            <div className="roster-list" aria-busy={!state}>
+            <div
+              className={`roster-list${editing ? " roster-editing" : ""}`}
+              aria-busy={!state}
+            >
               {!state ? (
                 <div className="roster-placeholder">
                   <LoaderCircle size={22} className="loading-icon" />
@@ -662,12 +636,7 @@ export default function Home() {
               ) : !roster.length ? (
                 <div className="roster-placeholder">
                   <Users size={29} strokeWidth={1.4} />
-                  <strong>Bring your people.</strong>
-                  <p>
-                    Add your teammates below.
-                    <br />
-                    Their counters will start at zero.
-                  </p>
+                  <strong>No teammates yet</strong>
                   <button
                     className="text-button"
                     onClick={() => nameInput.current?.focus()}
@@ -682,68 +651,55 @@ export default function Home() {
                     key={person.id}
                   >
                     <div className="person-identity">
-                      <span
-                        className="avatar"
-                        style={{ backgroundColor: personColor(person.id) }}
-                        aria-hidden="true"
-                      >
-                        {initials(person.name)}
-                      </span>
+                      <Avatar
+                        id={person.id}
+                        name={person.name}
+                        color={person.color}
+                        photoUrl={person.photoUrl}
+                      />
                       <div className="person-copy">
-                        {editing === person.id ? (
-                          <NameEditor
-                            person={person}
-                            disabled={busy}
-                            onCancel={() => setEditing(null)}
-                            onSave={(nextName) =>
-                              mutate(
-                                `/api/people/${person.id}`,
-                                { name: nextName },
-                                "PATCH",
-                              )
-                            }
-                          />
+                        <span className="person-name" title={person.name}>
+                          {person.name}
+                        </span>
+                        {manage ? (
+                          <div className="person-tools">
+                            <button
+                              disabled={busy || Boolean(pendingSpin)}
+                              aria-expanded={editing === person.id}
+                              onClick={() =>
+                                setEditing(
+                                  editing === person.id ? null : person.id,
+                                )
+                              }
+                            >
+                              Edit
+                            </button>
+                            <button
+                              disabled={busy || Boolean(pendingSpin)}
+                              onClick={() =>
+                                void mutate(
+                                  `/api/people/${person.id}`,
+                                  { active: !person.active },
+                                  "PATCH",
+                                )
+                              }
+                            >
+                              {person.active ? (
+                                <Pause size={10} />
+                              ) : (
+                                <Play size={10} />
+                              )}
+                              {person.active ? "Pause" : "Resume"}
+                            </button>
+                          </div>
                         ) : (
-                          <>
-                            <span className="person-name" title={person.name}>
-                              {person.name}
-                            </span>
-                            {manage ? (
-                              <div className="person-tools">
-                                <button
-                                  disabled={busy || Boolean(pendingSpin)}
-                                  onClick={() => setEditing(person.id)}
-                                >
-                                  Rename
-                                </button>
-                                <button
-                                  disabled={busy || Boolean(pendingSpin)}
-                                  onClick={() =>
-                                    void mutate(
-                                      `/api/people/${person.id}`,
-                                      { active: !person.active },
-                                      "PATCH",
-                                    )
-                                  }
-                                >
-                                  {person.active ? (
-                                    <Pause size={10} />
-                                  ) : (
-                                    <Play size={10} />
-                                  )}
-                                  {person.active ? "Pause" : "Resume"}
-                                </button>
-                              </div>
-                            ) : (
-                              <span className="person-subtitle">
-                                {!person.active
-                                  ? "Paused"
-                                  : person.lastPickedAt
-                                    ? `Last picked ${new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(new Date(person.lastPickedAt))}`
-                                    : "Waiting for a first pick"}
-                              </span>
-                            )}
-                          </>
+                          <span className="person-subtitle">
+                            {!person.active
+                              ? "Paused"
+                              : person.lastPickedAt
+                                ? `Last picked ${new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(new Date(person.lastPickedAt))}`
+                                : "Not picked yet"}
+                          </span>
                         )}
                       </div>
                     </div>
@@ -753,6 +709,16 @@ export default function Home() {
                         ? percentage(odds.get(person.id) ?? 0)
                         : "—"}
                     </span>
+                    {editing === person.id && (
+                      <PersonEditor
+                        person={person}
+                        disabled={busy || Boolean(pendingSpin)}
+                        onCancel={() => setEditing(null)}
+                        onSave={(values) =>
+                          mutate(`/api/people/${person.id}`, values, "PATCH")
+                        }
+                      />
+                    )}
                   </div>
                 ))
               )}
@@ -802,10 +768,7 @@ export default function Home() {
         <section className="history-section" aria-labelledby="history-heading">
           <div className="history-heading">
             <div>
-              <h2 id="history-heading">
-                The picks so far<span className="history-dot">.</span>
-              </h2>
-              <p>Every turn, remembered. Shared with your team.</p>
+              <h2 id="history-heading">Pick history</h2>
             </div>
             <span className="history-total">
               <History size={15} />
@@ -842,16 +805,8 @@ export default function Home() {
                 <History size={22} strokeWidth={1.5} />
               </span>
               <div>
-                <strong>
-                  {state
-                    ? "The first turn is still to come."
-                    : "Loading your team’s history."}
-                </strong>
-                <p>
-                  {state
-                    ? "Give the wheel a spin. Every pick will be saved here."
-                    : "Your saved picks will appear here."}
-                </p>
+                <strong>{state ? "No picks yet" : "Loading history…"}</strong>
+                <p>{state ? "Spin the wheel to add the first pick." : ""}</p>
               </div>
             </div>
           ) : (
@@ -860,7 +815,7 @@ export default function Home() {
                 <table className="history-table">
                   <thead>
                     <tr>
-                      <th scope="col">Who got the turn</th>
+                      <th scope="col">Teammate</th>
                       <th scope="col">Mode</th>
                       <th scope="col">Picked at</th>
                       <th scope="col" aria-label="Actions" />
@@ -874,15 +829,13 @@ export default function Home() {
                       >
                         <td>
                           <div className="history-person">
-                            <span
+                            <Avatar
+                              id={pick.personId}
+                              name={pick.personName}
+                              color={peopleById.get(pick.personId)?.color}
+                              photoUrl={peopleById.get(pick.personId)?.photoUrl}
                               className="history-avatar"
-                              style={{
-                                backgroundColor: personColor(pick.personId),
-                              }}
-                              aria-hidden="true"
-                            >
-                              {initials(pick.personName)}
-                            </span>
+                            />
                             <strong title={pick.personName}>
                               {pick.personName}
                             </strong>
@@ -946,15 +899,14 @@ export default function Home() {
           )}
         </section>
       </main>
-      <footer className="page-footer">
-        <span>A turn for everyone.</span>
-        <span>
-          <Cloud size={13} />
-          {syncError
-            ? "Connection interrupted · refresh to reconnect"
-            : "One wheel. One shared history."}
-        </span>
-      </footer>
+      {syncError && (
+        <footer className="page-footer" role="status">
+          <span>
+            <Cloud size={13} />
+            Connection interrupted · refresh to reconnect
+          </span>
+        </footer>
+      )}
     </div>
   );
 }

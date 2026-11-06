@@ -14,6 +14,8 @@ const people = (counts: number[]): Person[] =>
     count,
     active: true,
     lastPickedAt: null,
+    color: null,
+    photoUrl: null,
   }));
 
 test("random mode gives equal odds regardless of historical picks", () => {

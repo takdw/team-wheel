@@ -15,6 +15,13 @@
       "when": 1793959954320,
       "tag": "0001_revision-triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1793965022466,
+      "tag": "0002_person-profiles",
+      "breakpoints": true
     }
   ]
 }

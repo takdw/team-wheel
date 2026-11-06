@@ -8,7 +8,9 @@ import {
   spin,
   undoPick,
   updatePerson,
+  getPersonPhoto,
 } from "@/lib/store";
+import { decodePhoto, personUpdateSchema } from "@/lib/profile";
 
 export const dynamic = "force-dynamic";
 const name = z
@@ -27,8 +29,11 @@ async function readBody(request: Request): Promise<unknown> {
   }
   if (!request.headers.get("Content-Type")?.includes("application/json"))
     throw new AppError("Send changes as JSON.", 415);
+  if (Number(request.headers.get("Content-Length")) > 70_000)
+    throw new AppError("That request is too large.", 413);
   const text = await request.text();
-  if (text.length > 4096) throw new AppError("That request is too large.", 413);
+  if (text.length > 70_000)
+    throw new AppError("That request is too large.", 413);
   try {
     return JSON.parse(text);
   } catch {
@@ -45,6 +50,19 @@ async function handle(request: Request): Promise<Response> {
     const path = new URL(request.url).pathname.replace(/\/$/, "");
     const method = request.method;
     const headers = { "Cache-Control": "no-store" };
+    if (method === "GET" && /^\/api\/people\/[^/]+\/photo$/.test(path)) {
+      const id = uuid.parse(path.split("/")[3]);
+      const version = uuid.parse(new URL(request.url).searchParams.get("v"));
+      const photo = decodePhoto(await getPersonPhoto(env.DB, id, version));
+      if (!photo) throw new AppError("Photo could not be read.", 404);
+      return new Response(photo.bytes.buffer, {
+        headers: {
+          "Content-Type": photo.contentType,
+          "Cache-Control": "private, max-age=31536000, immutable",
+          "X-Content-Type-Options": "nosniff",
+        },
+      });
+    }
     if (method === "GET" && path === "/api/state")
       return Response.json(await getSnapshot(env.DB), { headers });
     if (method === "GET" && path === "/api/history") {
@@ -61,12 +79,7 @@ async function handle(request: Request): Promise<Response> {
       await addPerson(env.DB, z.object({ name }).parse(body).name);
     } else if (method === "PATCH" && /^\/api\/people\/[^/]+$/.test(path)) {
       const id = uuid.parse(path.split("/").at(-1));
-      const values = z
-        .object({ name: name.optional(), active: z.boolean().optional() })
-        .refine(
-          (value) => value.name !== undefined || value.active !== undefined,
-        )
-        .parse(body);
+      const values = personUpdateSchema.parse(body);
       await updatePerson(env.DB, id, values);
     } else if (method === "POST" && path === "/api/spins") {
       const values = z

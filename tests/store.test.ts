@@ -5,6 +5,7 @@ import { test } from "node:test";
 import {
   addPerson,
   getHistory,
+  getPersonPhoto,
   getSnapshot,
   spin,
   undoPick,
@@ -172,6 +173,51 @@ test("counters include both modes, and old history remains available by cursor",
       candidates.find((person) => person.id === roster[1].id)!.probability >
         0.97,
     );
+  } finally {
+    close();
+  }
+});
+
+test("profile changes persist, version photos, and preserve historical spin colors", async () => {
+  const { db, close } = database();
+  try {
+    await addPerson(db, "Profile test");
+    const person = (await getSnapshot(db)).people[0];
+    assert.equal(person.color, null);
+    assert.equal(person.photoUrl, null);
+    const photo =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aQ+UAAAAASUVORK5CYII=";
+    await updatePerson(db, person.id, { color: "#112233", photo });
+    const updated = (await getSnapshot(db)).people[0];
+    assert.equal(updated.color, "#112233");
+    assert.ok(updated.photoUrl);
+    const version = new URL(
+      updated.photoUrl!,
+      "https://wheel.example",
+    ).searchParams.get("v")!;
+    assert.equal(await getPersonPhoto(db, person.id, version), photo);
+    const result = await spin(db, crypto.randomUUID(), "random");
+    assert.equal(result.candidates[0].color, "#112233");
+    assert.equal(
+      JSON.stringify(result.candidates).includes("data:image"),
+      false,
+    );
+    await updatePerson(db, person.id, { name: "Renamed" });
+    assert.equal((await getSnapshot(db)).people[0].photoUrl, updated.photoUrl);
+    await updatePerson(db, person.id, { photo });
+    const replacement = (await getSnapshot(db)).people[0];
+    assert.notEqual(replacement.photoUrl, updated.photoUrl);
+    await assert.rejects(
+      getPersonPhoto(db, person.id, version),
+      /Photo not found/,
+    );
+    await updatePerson(db, person.id, { color: null, photo: null });
+    const reset = (await getSnapshot(db)).people[0];
+    assert.equal(reset.color, null);
+    assert.equal(reset.photoUrl, null);
+    const replay = await spin(db, result.pick.id, "random");
+    assert.equal(replay.candidates[0].color, "#112233");
+    assert.equal(replay.state.totalPicks, 1);
   } finally {
     close();
   }

@@ -20,6 +20,9 @@ A simple spinning wheel with random and balanced modes, per-person counters, and
 - Balanced mode uses weight 1 / (1 + picks - minimum active picks).
 - All valid picks in both modes contribute to counters.
 - Rename and deactivate people without losing historical names.
+- Per-person custom colors, reset to automatic colors, and optional uploaded profile photos shared across devices.
+- Profile photos appear in the roster, wheel, winner, and history. Resize and center-crop photos to 128px before saving them in D1.
+- Keep interface copy concise and functional; avoid taglines and decorative slogans.
 - Undo the latest valid pick while retaining its audit entry.
 - Server-side cryptographic selection, durable results before animation, and concurrency protection.
 - Accessible responsive interface with reduced motion.

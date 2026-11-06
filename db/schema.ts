@@ -16,6 +16,9 @@ export const people = sqliteTable("people", {
   name: text("name").notNull(),
   active: integer("active", { mode: "boolean" }).notNull().default(true),
   createdAt: text("created_at").notNull(),
+  color: text("color"),
+  photo: text("photo"),
+  photoVersion: text("photo_version"),
 });
 export const picks = sqliteTable(
   "picks",

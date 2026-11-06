@@ -8,6 +8,7 @@ import type {
   SpinResult,
 } from "./wheel";
 import { getCandidates, secureFraction, selectCandidate } from "./wheel";
+import type { PersonUpdate } from "./profile";
 
 export class AppError extends Error {
   constructor(
@@ -53,7 +54,7 @@ export async function getSnapshot(db: D1Database): Promise<Snapshot> {
   // D1 batches are transactions, keeping the revision and counts consistent.
   const [revision, roster, history] = await db.batch([
     db.prepare("SELECT revision FROM wheel_state WHERE id = 1"),
-    db.prepare(`SELECT people.id, people.name, people.active,
+    db.prepare(`SELECT people.id, people.name, people.active, people.color, people.photo_version,
       COUNT(picks.sequence) AS count, MAX(picks.created_at) AS last_picked_at
       FROM people LEFT JOIN picks ON people.id = picks.person_id AND picks.undone_at IS NULL
       GROUP BY people.id ORDER BY people.created_at, people.id`),
@@ -70,6 +71,8 @@ export async function getSnapshot(db: D1Database): Promise<Snapshot> {
       active: number;
       count: number;
       last_picked_at: string | null;
+      color: string | null;
+      photo_version: string | null;
     }>
   ).map((person) => ({
     id: person.id,
@@ -77,6 +80,10 @@ export async function getSnapshot(db: D1Database): Promise<Snapshot> {
     active: Boolean(person.active),
     count: person.count,
     lastPickedAt: person.last_picked_at,
+    color: person.color,
+    photoUrl: person.photo_version
+      ? `/api/people/${person.id}/photo?v=${person.photo_version}`
+      : null,
   }));
   return {
     revision: Number(
@@ -113,24 +120,53 @@ export async function addPerson(db: D1Database, name: string): Promise<void> {
 export async function updatePerson(
   db: D1Database,
   id: string,
-  values: { name?: string; active?: boolean },
+  values: PersonUpdate,
 ): Promise<void> {
+  const assignments: string[] = [];
+  const bindings: (string | number | null)[] = [];
+  if (values.name !== undefined) {
+    assignments.push("name = ?");
+    bindings.push(values.name);
+  }
+  if (values.active !== undefined) {
+    assignments.push("active = ?");
+    bindings.push(Number(values.active));
+  }
+  if (values.color !== undefined) {
+    assignments.push("color = ?");
+    bindings.push(values.color);
+  }
+  if (values.photo !== undefined) {
+    assignments.push("photo = ?", "photo_version = ?");
+    bindings.push(
+      values.photo,
+      values.photo === null ? null : crypto.randomUUID(),
+    );
+  }
+  if (!assignments.length) throw new AppError("Choose a change to save.");
   const result = await db
     .prepare(
-      `UPDATE people SET name = COALESCE(?, name), active = COALESCE(?, active)
-    WHERE id = ? RETURNING id`,
+      `UPDATE people SET ${assignments.join(", ")} WHERE id = ? RETURNING id`,
     )
-    .bind(
-      values.name ?? null,
-      values.active === undefined ? null : Number(values.active),
-      id,
-    )
+    .bind(...bindings, id)
     .all();
   if (!result.results.length)
     throw new AppError(
       "That person could not be found. Refresh the team list.",
       404,
     );
+}
+export async function getPersonPhoto(
+  db: D1Database,
+  id: string,
+  version: string,
+): Promise<string> {
+  const row = await db
+    .prepare("SELECT photo FROM people WHERE id = ? AND photo_version = ?")
+    .bind(id, version)
+    .first<{ photo: string }>();
+  if (!row?.photo) throw new AppError("Photo not found.", 404);
+  return row.photo;
 }
 export async function spin(
   db: D1Database,
