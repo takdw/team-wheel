@@ -55,6 +55,12 @@ CLOUDFLARE_D1_DATABASE_ID='00000000-0000-4000-8000-000000000001' npm run deploy 
 
 The `.openai/hosting.json` manifest retains the project's Sites identity and `DB` binding. Sites provisions its own D1 database and applies the same migrations. Its preview uses platform access controls with `ACCESS_MODE=sites`; keep this value in Sites runtime settings. Independent Cloudflare deployments explicitly clear that mode and use `TEAM_PASSWORD` instead. Hosting deployments have separate databases; a Sites preview does not automatically transfer its data to an independently deployed Worker.
 
+## Delete a member
+
+Choose **Manage → Delete** beside a teammate, then confirm **Delete member**. **Cancel deletion** leaves them unchanged. Deleted members leave the roster and future spins; their past picks, totals, and most-picked statistics remain in history.
+
+After deletion, choose **Undo deletion** in the notice to restore the same member, including their profile, pick count, and previous paused/active state. The notice stays until dismissed or another change is saved. Deleting a member frees roster capacity. Pausing remains available for temporarily excluding a teammate.
+
 ## Colors and profile photos
 
 Choose **Manage → Edit** beside a teammate to change their name, choose a preset or custom color, and upload a profile photo. Save the changes to share them with the team. **Use default color** restores the automatic color; **Remove** clears the photo and brings back initials.

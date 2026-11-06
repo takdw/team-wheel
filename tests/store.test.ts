@@ -4,6 +4,8 @@ import { readFileSync, readdirSync } from "node:fs";
 import { test } from "node:test";
 import {
   addPerson,
+  deletePerson,
+  restorePerson,
   getHistory,
   getPersonPhoto,
   getSnapshot,
@@ -218,6 +220,95 @@ test("profile changes persist, version photos, and preserve historical spin colo
     const replay = await spin(db, result.pick.id, "random");
     assert.equal(replay.candidates[0].color, "#112233");
     assert.equal(replay.state.totalPicks, 1);
+  } finally {
+    close();
+  }
+});
+
+test("deleting a member removes them from selection while preserving history, totals, and leaders", async () => {
+  const { db, close } = database();
+  try {
+    await addPerson(db, "Former member");
+    const person = (await getSnapshot(db)).people[0];
+    const result = await spin(db, crypto.randomUUID(), "random");
+    await deletePerson(db, person.id);
+    const deleted = await getSnapshot(db);
+    assert.equal(deleted.people.length, 0);
+    assert.equal(deleted.totalPicks, 1);
+    assert.equal(deleted.history.items[0].personName, "Former member");
+    assert.deepEqual(deleted.leaders, [
+      { id: person.id, name: "Former member", count: 1 },
+    ]);
+    await assert.rejects(
+      updatePerson(db, person.id, { active: true }),
+      /could not be found/,
+    );
+    await assert.rejects(
+      spin(db, crypto.randomUUID(), "balanced"),
+      /Add or resume/,
+    );
+    await addPerson(db, "Current member");
+    const next = await spin(db, crypto.randomUUID(), "balanced");
+    assert.equal(next.pick.personName, "Current member");
+    assert.equal(next.state.totalPicks, 2);
+    await undoPick(db, next.pick.id);
+    await undoPick(db, result.pick.id);
+    const undone = await getSnapshot(db);
+    assert.equal(undone.totalPicks, 0);
+    assert.deepEqual(undone.leaders, []);
+    assert.ok(
+      undone.history.items.find((pick) => pick.id === result.pick.id)?.undoneAt,
+    );
+  } finally {
+    close();
+  }
+});
+
+test("undoing member deletion restores their profile, paused state, and counters", async () => {
+  const { db, close } = database();
+  try {
+    await addPerson(db, "Restorable member");
+    const person = (await getSnapshot(db)).people[0];
+    await spin(db, crypto.randomUUID(), "random");
+    const photo =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aQ+UAAAAASUVORK5CYII=";
+    await updatePerson(db, person.id, {
+      active: false,
+      color: "#123456",
+      photo,
+    });
+    const before = await getSnapshot(db);
+    const photoVersion = new URL(
+      before.people[0].photoUrl!,
+      "https://wheel.example",
+    ).searchParams.get("v")!;
+    await deletePerson(db, person.id);
+    await assert.rejects(
+      getPersonPhoto(db, person.id, photoVersion),
+      /Photo not found/,
+    );
+    await restorePerson(db, person.id);
+    const restored = await getSnapshot(db);
+    assert.deepEqual(restored.people, before.people);
+    assert.equal(restored.totalPicks, before.totalPicks);
+    assert.equal(await getPersonPhoto(db, person.id, photoVersion), photo);
+    await restorePerson(db, person.id);
+    assert.deepEqual((await getSnapshot(db)).people, before.people);
+  } finally {
+    close();
+  }
+});
+
+test("deleted members free roster capacity and restoring still respects the limit", async () => {
+  const { db, close } = database();
+  try {
+    for (let index = 0; index < 100; index++)
+      await addPerson(db, `Member ${index}`);
+    const person = (await getSnapshot(db)).people[0];
+    await deletePerson(db, person.id);
+    await addPerson(db, "Replacement");
+    assert.equal((await getSnapshot(db)).people.length, 100);
+    await assert.rejects(restorePerson(db, person.id), /team is full/);
   } finally {
     close();
   }

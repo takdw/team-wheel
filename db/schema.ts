@@ -19,6 +19,7 @@ export const people = sqliteTable("people", {
   color: text("color"),
   photo: text("photo"),
   photoVersion: text("photo_version"),
+  deletedAt: text("deleted_at"),
 });
 export const picks = sqliteTable(
   "picks",

@@ -17,6 +17,7 @@ import {
   Plus,
   RotateCcw,
   Shuffle,
+  Trash2,
   Users,
   X,
 } from "lucide-react";
@@ -256,6 +257,8 @@ export default function Home() {
   const [name, setName] = useState("");
   const [manage, setManage] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
+  const [lastDeleted, setLastDeleted] = useState<Person | null>(null);
   const [sortByPicks, setSortByPicks] = useState(false);
   const [copied, setCopied] = useState(false);
   const [outcome, setOutcome] = useState<SpinResult | null>(null);
@@ -324,14 +327,8 @@ export default function Home() {
   const history = [...(state?.history.items ?? []), ...(older?.items ?? [])];
   const nextCursor = older ? older.nextCursor : state?.history.nextCursor;
   const latestValid = state?.history.items.find((pick) => !pick.undoneAt);
-  const topCount = Math.max(
-    0,
-    ...(state?.people.map((person) => person.count) ?? []),
-  );
-  const leaders =
-    state?.people.filter(
-      (person) => person.count === topCount && topCount > 0,
-    ) ?? [];
+  const leaders = state?.leaders ?? [];
+  const topCount = leaders[0]?.count ?? 0;
 
   async function mutate(path: string, body: unknown, method = "POST") {
     if (operating.current) return false;
@@ -342,6 +339,7 @@ export default function Home() {
       apply(await request<Snapshot>(path, body, method));
       setOutcome(null);
       setRevealed(false);
+      setLastDeleted(null);
       return true;
     } catch (issue) {
       setError(
@@ -351,6 +349,13 @@ export default function Home() {
     } finally {
       operating.current = false;
       setOperation(null);
+    }
+  }
+  async function removeMember(person: Person) {
+    if (await mutate(`/api/people/${person.id}`, {}, "DELETE")) {
+      setLastDeleted(person);
+      setConfirmingDelete(null);
+      setEditing(null);
     }
   }
   async function startSpin() {
@@ -365,6 +370,7 @@ export default function Home() {
       const result = await request<SpinResult>("/api/spins", pending);
       setPendingSpin(null);
       setOutcome(result);
+      setLastDeleted(null);
     } catch (issue) {
       if (issue instanceof RequestError && issue.status < 500)
         setPendingSpin(null);
@@ -608,12 +614,37 @@ export default function Home() {
                 onClick={() => {
                   setManage(!manage);
                   setEditing(null);
+                  setConfirmingDelete(null);
                 }}
               >
                 {manage ? <Check size={14} /> : <Pencil size={14} />}
                 {manage ? "Done" : "Manage"}
               </button>
             </div>
+            {lastDeleted && (
+              <div className="member-deleted-notice" role="status">
+                <span>
+                  <strong>{lastDeleted.name}</strong> was removed from the team.
+                </span>
+                <button
+                  className="text-button"
+                  disabled={busy || Boolean(pendingSpin)}
+                  onClick={() =>
+                    void mutate(`/api/people/${lastDeleted.id}/restore`, {})
+                  }
+                >
+                  <RotateCcw size={14} />
+                  Undo deletion
+                </button>
+                <button
+                  className="icon-button"
+                  aria-label="Dismiss deletion notice"
+                  onClick={() => setLastDeleted(null)}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            )}
             <div className="roster-head">
               <span>Teammate</span>
               <button
@@ -625,7 +656,7 @@ export default function Home() {
               <span>Next odds</span>
             </div>
             <div
-              className={`roster-list${editing ? " roster-editing" : ""}`}
+              className={`roster-list${editing || confirmingDelete ? " roster-editing" : ""}`}
               aria-busy={!state}
             >
               {!state ? (
@@ -666,11 +697,12 @@ export default function Home() {
                             <button
                               disabled={busy || Boolean(pendingSpin)}
                               aria-expanded={editing === person.id}
-                              onClick={() =>
+                              onClick={() => {
                                 setEditing(
                                   editing === person.id ? null : person.id,
-                                )
-                              }
+                                );
+                                setConfirmingDelete(null);
+                              }}
                             >
                               Edit
                             </button>
@@ -691,6 +723,18 @@ export default function Home() {
                               )}
                               {person.active ? "Pause" : "Resume"}
                             </button>
+                            <button
+                              className="delete-member"
+                              aria-label={`Delete ${person.name}`}
+                              disabled={busy || Boolean(pendingSpin)}
+                              onClick={() => {
+                                setConfirmingDelete(person.id);
+                                setEditing(null);
+                              }}
+                            >
+                              <Trash2 size={11} />
+                              Delete
+                            </button>
                           </div>
                         ) : (
                           <span className="person-subtitle">
@@ -709,6 +753,46 @@ export default function Home() {
                         ? percentage(odds.get(person.id) ?? 0)
                         : "—"}
                     </span>
+                    {confirmingDelete === person.id && (
+                      <div
+                        className="member-delete-confirmation"
+                        role="group"
+                        aria-label={`Delete ${person.name}?`}
+                      >
+                        <p>
+                          Delete <strong>{person.name}</strong> from the team?
+                        </p>
+                        <p className="delete-history-note">
+                          Past picks and statistics will be kept.
+                        </p>
+                        <div className="delete-actions">
+                          <button
+                            className="text-button"
+                            disabled={busy}
+                            autoFocus
+                            onClick={() => setConfirmingDelete(null)}
+                          >
+                            Cancel deletion
+                          </button>
+                          <button
+                            className="button confirm-member-delete"
+                            aria-label={`Confirm deleting ${person.name}`}
+                            disabled={busy || Boolean(pendingSpin)}
+                            onClick={() => void removeMember(person)}
+                          >
+                            {operation === "save" ? (
+                              <LoaderCircle
+                                size={14}
+                                className="loading-icon"
+                              />
+                            ) : (
+                              <Trash2 size={14} />
+                            )}
+                            Delete member
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     {editing === person.id && (
                       <PersonEditor
                         person={person}

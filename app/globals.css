@@ -554,6 +554,7 @@ h2 {
 }
 .person-tools {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   margin-top: 1px;
@@ -1398,5 +1399,81 @@ h2 {
   }
   .editor-actions {
     gap: 13px;
+  }
+}
+
+.person-tools .delete-member {
+  color: var(--danger);
+}
+.member-delete-confirmation {
+  grid-column: 1/-1;
+  margin: 4px 0 15px;
+  padding: 13px;
+  background: #f9e9df;
+  border-radius: 8px;
+  min-width: 0;
+}
+.member-delete-confirmation p {
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.member-delete-confirmation .delete-history-note {
+  margin-top: 5px;
+  font-size: 11px;
+  color: var(--danger);
+}
+.delete-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+}
+.confirm-member-delete {
+  min-height: 37px;
+  padding: 8px 11px;
+  font-size: 11px;
+  background: var(--danger);
+  color: var(--surface);
+}
+.confirm-member-delete:hover:not(:disabled) {
+  filter: brightness(0.9);
+}
+.member-deleted-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 10px 11px;
+  background: var(--sage);
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.member-deleted-notice > span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.member-deleted-notice > .icon-button {
+  flex-shrink: 0;
+}
+@media (max-width: 480px) {
+  .member-deleted-notice {
+    flex-wrap: wrap;
+    gap: 6px 12px;
+  }
+  .member-deleted-notice > span {
+    flex-basis: 100%;
+  }
+  .member-deleted-notice > .icon-button {
+    margin-left: auto;
+  }
+  .delete-actions {
+    gap: 9px;
+  }
+  .delete-actions .text-button {
+    font-size: 11px;
   }
 }

@@ -9,6 +9,8 @@ import {
   undoPick,
   updatePerson,
   getPersonPhoto,
+  deletePerson,
+  restorePerson,
 } from "@/lib/store";
 import { decodePhoto, personUpdateSchema } from "@/lib/profile";
 
@@ -81,6 +83,13 @@ async function handle(request: Request): Promise<Response> {
       const id = uuid.parse(path.split("/").at(-1));
       const values = personUpdateSchema.parse(body);
       await updatePerson(env.DB, id, values);
+    } else if (method === "DELETE" && /^\/api\/people\/[^/]+$/.test(path)) {
+      await deletePerson(env.DB, uuid.parse(path.split("/").at(-1)));
+    } else if (
+      method === "POST" &&
+      /^\/api\/people\/[^/]+\/restore$/.test(path)
+    ) {
+      await restorePerson(env.DB, uuid.parse(path.split("/")[3]));
     } else if (method === "POST" && path === "/api/spins") {
       const values = z
         .object({ id: uuid, mode: z.enum(["random", "balanced"]) })
@@ -113,3 +122,4 @@ async function handle(request: Request): Promise<Response> {
 export const GET = handle;
 export const POST = handle;
 export const PATCH = handle;
+export const DELETE = handle;

@@ -33,6 +33,7 @@ export interface Snapshot {
   people: Person[];
   history: HistoryPage;
   totalPicks: number;
+  leaders: { id: string; name: string; count: number }[];
 }
 export interface SpinResult {
   pick: Pick;
