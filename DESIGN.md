@@ -311,7 +311,7 @@ Probability becomes a visible piece of the shared table.
 
 The live SVG has a 520-unit viewBox with probability-proportional sectors. Random gives every active person equal area; Balanced weights each active person by `1 / (1 + picks - minimum active picks)`. The stationary pointer identifies the final slice. Accessible SVG text points users to the roster's numeric odds; the winner is announced through an atomic polite live status region.
 
-Only after the selection is saved does the disc turn through at least five full revolutions, landing at the selected sector's midpoint. The animation lasts 4300ms with `cubic-bezier(.12,.72,.12,1)`. During saving, status says “Saving your selection…”; during rotation it says “Around it goes…”. The result and saved snapshot reveal together when motion finishes. Reduced-motion preference applies the final rotation and completion synchronously, without creating a rotation animation. CSS also collapses incidental transition/loader animation durations to 0.01ms.
+Only after the selection is saved does the disc turn through at least five full revolutions, landing at the selected sector's midpoint. The animation lasts 4300ms with `cubic-bezier(.12,.72,.12,1)`. While a spin is being saved, status says “Saving your selection…”; during rotation it says “Around it goes…”. Roster saves and undo disable conflicting controls while retaining the idle spin label and current result. The result and saved snapshot reveal together when motion finishes. Reduced-motion preference applies the final rotation and completion synchronously, without creating a rotation animation. CSS also collapses incidental transition/loader animation durations to 0.01ms.
 
 ### Loading, empty, error, and history states
 

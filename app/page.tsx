@@ -284,7 +284,9 @@ export default function Home() {
   const [mode, setMode] = useState<Mode>("random");
   const [error, setError] = useState("");
   const [syncError, setSyncError] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [operation, setOperation] = useState<"save" | "spin" | null>(null);
+  const busy = operation !== null;
+  const spinning = operation === "spin";
   const operating = useRef(false);
   const revision = useRef<number | null>(null);
   const [name, setName] = useState("");
@@ -366,7 +368,7 @@ export default function Home() {
   async function mutate(path: string, body: unknown, method = "POST") {
     if (operating.current) return false;
     operating.current = true;
-    setBusy(true);
+    setOperation("save");
     setError("");
     try {
       apply(await request<Snapshot>(path, body, method));
@@ -380,13 +382,13 @@ export default function Home() {
       return false;
     } finally {
       operating.current = false;
-      setBusy(false);
+      setOperation(null);
     }
   }
   async function startSpin() {
     if (operating.current || (!candidates.length && !pendingSpin)) return;
     operating.current = true;
-    setBusy(true);
+    setOperation("spin");
     setError("");
     setRevealed(false);
     const pending = pendingSpin ?? { id: crypto.randomUUID(), mode };
@@ -405,14 +407,14 @@ export default function Home() {
           " If the result is uncertain, retrying resumes the same spin.",
       );
       operating.current = false;
-      setBusy(false);
+      setOperation(null);
     }
   }
   function finishSpin() {
     if (outcome) apply(outcome.state);
     setRevealed(true);
     operating.current = false;
-    setBusy(false);
+    setOperation(null);
     void refresh();
   }
   async function copyLink() {
@@ -557,7 +559,7 @@ export default function Home() {
               aria-live="polite"
               aria-atomic="true"
             >
-              {busy && !revealed ? (
+              {spinning && !revealed ? (
                 <>
                   <span className="result-caption">
                     {outcome ? "Around it goes…" : "Saving your selection…"}
@@ -596,12 +598,12 @@ export default function Home() {
               disabled={busy || !state || (!candidates.length && !pendingSpin)}
               onClick={startSpin}
             >
-              {busy ? (
+              {spinning ? (
                 <LoaderCircle className="loading-icon" size={20} />
               ) : (
                 <Shuffle size={20} />
               )}
-              {busy
+              {spinning
                 ? "Spinning…"
                 : pendingSpin
                   ? "Retry this spin"
