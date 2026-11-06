@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import {
   ArrowDown,
   ArrowUpRight,
@@ -22,11 +23,11 @@ import {
   X,
 } from "lucide-react";
 import {
-  candidateMidpoint,
   getCandidates,
   palette,
   personColor,
   textColor,
+  secureFraction,
   type Candidate,
   type HistoryPage,
   type Mode,
@@ -34,9 +35,10 @@ import {
   type Snapshot,
   type SpinResult,
 } from "@/lib/wheel";
-import { animateWheel } from "@/lib/motion";
+import { animateWheel, spinRotation } from "@/lib/motion";
 import { Avatar } from "./components/avatar";
 import { PersonEditor } from "./components/person-editor";
+import { TeamDrawer } from "./components/team-drawer";
 
 class RequestError extends Error {
   constructor(
@@ -89,30 +91,44 @@ function Wheel({
   people,
   outcome,
   onFinish,
+  onOpenTeam,
 }: {
   candidates: Candidate[];
   people: Person[];
   outcome: SpinResult | null;
   onFinish: () => void;
+  onOpenTeam: () => void;
 }) {
   const rotor = useRef<HTMLDivElement>(null);
   const angle = useRef(0);
   const finish = useRef(onFinish);
-  finish.current = onFinish;
+  useEffect(() => {
+    finish.current = onFinish;
+  }, [onFinish]);
   useEffect(() => {
     if (!outcome || !rotor.current) return;
     const element = rotor.current;
-    const target =
-      360 - candidateMidpoint(outcome.candidates, outcome.pick.personId);
     const start = angle.current;
-    const end = start + 360 * 5 + ((target - (start % 360) + 360) % 360);
+    const end = spinRotation(
+      start,
+      outcome.landingAngle,
+      5 + Math.floor(secureFraction() * 3),
+    );
+    const duration = 5200 + secureFraction() * 1600;
     const reduced = window.matchMedia(
       "(prefers-reduced-motion: reduce)",
     ).matches;
-    return animateWheel(element, start, end, reduced, () => {
-      angle.current = end;
-      finish.current();
-    });
+    return animateWheel(
+      element,
+      start,
+      end,
+      reduced,
+      () => {
+        angle.current = end;
+        finish.current();
+      },
+      duration,
+    );
   }, [outcome]);
   useEffect(() => {
     if (!outcome && rotor.current) {
@@ -130,7 +146,15 @@ function Wheel({
   const portraits = new Map(
     people.map((person) => [person.id, person.photoUrl]),
   );
-  let offset = 0;
+  const slices: { candidate: Candidate; start: number; end: number }[] = [];
+  for (const candidate of entries) {
+    const start = slices.at(-1)?.end ?? 0;
+    slices.push({
+      candidate,
+      start,
+      end: start + candidate.probability * Math.PI * 2,
+    });
+  }
   return (
     <div className={`wheel-wrap ${candidates.length ? "" : "wheel-empty"}`}>
       <div className="wheel-pointer" aria-hidden="true">
@@ -144,15 +168,12 @@ function Wheel({
           role="img"
           aria-label={
             candidates.length
-              ? `Wheel with ${candidates.length} ${candidates.length === 1 ? "person" : "people"}. Individual odds are shown in Your team.`
+              ? `Wheel with ${candidates.length} ${candidates.length === 1 ? "person" : "people"}. Individual odds are shown in Team.`
               : "Add a teammate to start."
           }
         >
           <circle cx="260" cy="260" r="255" fill="#f4f2ec" />
-          {entries.map((candidate, index) => {
-            const start = offset * Math.PI * 2;
-            offset += candidate.probability;
-            const end = offset * Math.PI * 2;
+          {slices.map(({ candidate, start, end }, index) => {
             const mid = (start + end) / 2;
             const radius = 244;
             const x1 = 260 + radius * Math.sin(start),
@@ -236,8 +257,14 @@ function Wheel({
       {!candidates.length && (
         <div className="empty-wheel-label">
           <Users size={25} />
-          <strong>Add your team</strong>
-          <span>Enter a name to start.</span>
+          <button className="empty-team-button" onClick={onOpenTeam}>
+            {people.length ? "Open team" : "Add teammates"}
+          </button>
+          <span>
+            {people.length
+              ? "Resume a teammate to spin."
+              : "Enter a name to start."}
+          </span>
         </div>
       )}
     </div>
@@ -256,6 +283,7 @@ export default function Home() {
   const revision = useRef<number | null>(null);
   const [name, setName] = useState("");
   const [manage, setManage] = useState(false);
+  const [teamOpen, setTeamOpen] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
   const [lastDeleted, setLastDeleted] = useState<Person | null>(null);
@@ -270,6 +298,7 @@ export default function Home() {
   const [older, setOlder] = useState<HistoryPage | null>(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const nameInput = useRef<HTMLInputElement>(null);
+  const teamButton = useRef<HTMLButtonElement>(null);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const apply = useCallback((next: Snapshot) => {
     if (revision.current !== null && next.revision < revision.current) return;
@@ -295,6 +324,8 @@ export default function Home() {
     [apply],
   );
   useEffect(() => {
+    // Initial refresh updates state only after its network request settles.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void refresh(true);
     const timer = setInterval(() => void refresh(), 15000);
     const focus = () => void refresh();
@@ -329,6 +360,13 @@ export default function Home() {
   const latestValid = state?.history.items.find((pick) => !pick.undoneAt);
   const leaders = state?.leaders ?? [];
   const topCount = leaders[0]?.count ?? 0;
+
+  function closeTeam() {
+    setTeamOpen(false);
+    setManage(false);
+    setEditing(null);
+    setConfirmingDelete(null);
+  }
 
   async function mutate(path: string, body: unknown, method = "POST") {
     if (operating.current) return false;
@@ -425,17 +463,55 @@ export default function Home() {
     }
   }
 
+  const errorNotice = error ? (
+    <div className="error-banner" role="alert">
+      <span>{error}</span>
+      <button
+        className="text-button"
+        onClick={() => {
+          setError("");
+          void refresh(true);
+        }}
+      >
+        Refresh
+      </button>
+      <button
+        className="icon-button"
+        aria-label="Dismiss error"
+        onClick={() => setError("")}
+      >
+        <X size={17} />
+      </button>
+    </div>
+  ) : null;
+
   return (
     <div className="app-shell">
       <header className="topbar">
-        <a className="brand" href="/" aria-label="Team Wheel home">
-          <span className="brand-mark">
-            <ArrowUpRight size={25} strokeWidth={1.8} />
-          </span>
-          <span>
-            teamwheel<span className="brand-period">.</span>
-          </span>
-        </a>
+        <div className="brand-group">
+          <Link className="brand" href="/" aria-label="Team Wheel home">
+            <span className="brand-mark">
+              <ArrowUpRight size={25} strokeWidth={1.8} />
+            </span>
+            <span>
+              teamwheel<span className="brand-period">.</span>
+            </span>
+          </Link>
+          <button
+            className="button team-trigger"
+            ref={teamButton}
+            aria-label="Open team"
+            aria-haspopup="dialog"
+            aria-expanded={teamOpen}
+            aria-controls="team-drawer"
+            disabled={spinning}
+            onClick={() => setTeamOpen(true)}
+          >
+            <Users size={17} />
+            <span>Team</span>
+            <span className="count-tag">{state?.people.length ?? 0}</span>
+          </button>
+        </div>
         <div className="header-actions">
           <span className={`sync-status ${syncError ? "sync-offline" : ""}`}>
             <Cloud size={16} />
@@ -449,10 +525,11 @@ export default function Home() {
           </span>
           <button
             className="button button-secondary share-button"
+            aria-label={copied ? "Link copied" : "Copy team link"}
             onClick={copyLink}
           >
             {copied ? <Check size={16} /> : <Copy size={16} />}
-            {copied ? "Link copied" : "Copy team link"}
+            <span>{copied ? "Link copied" : "Copy team link"}</span>
           </button>
         </div>
       </header>
@@ -460,27 +537,7 @@ export default function Home() {
         <div className="page-heading">
           <h1>Who’s up next?</h1>
         </div>
-        {error && (
-          <div className="error-banner" role="alert">
-            <span>{error}</span>
-            <button
-              className="text-button"
-              onClick={() => {
-                setError("");
-                void refresh(true);
-              }}
-            >
-              Refresh
-            </button>
-            <button
-              className="icon-button"
-              aria-label="Dismiss error"
-              onClick={() => setError("")}
-            >
-              <X size={17} />
-            </button>
-          </div>
-        )}
+        {!teamOpen && errorNotice}
         <div className="workspace">
           <section className="spin-workspace" aria-label="Spin the team wheel">
             <div
@@ -521,6 +578,7 @@ export default function Home() {
               people={state?.people ?? []}
               outcome={outcome}
               onFinish={finishSpin}
+              onOpenTeam={() => setTeamOpen(true)}
             />
             <div
               className="spin-result"
@@ -561,12 +619,16 @@ export default function Home() {
               ) : (
                 <>
                   <strong className="ready-label">
-                    {candidates.length ? "Ready to spin" : "No teammates yet"}
+                    {candidates.length
+                      ? "Ready to spin"
+                      : "No active teammates"}
                   </strong>
                   <span className="result-caption">
                     {candidates.length
                       ? `${candidates.length} ${candidates.length === 1 ? "person" : "people"} active.`
-                      : "Add a name to start."}
+                      : state?.people.length
+                        ? "Resume someone in Team."
+                        : "Add a name to start."}
                   </span>
                 </>
               )}
@@ -601,253 +663,6 @@ export default function Home() {
               </p>
             </details>
           </section>
-          <aside className="team-panel" aria-labelledby="team-heading">
-            <div className="panel-heading">
-              <div className="panel-title">
-                <h2 id="team-heading">Your team</h2>
-                <span className="count-tag">{candidates.length}</span>
-              </div>
-              <button
-                className="text-button manage-button"
-                aria-pressed={manage}
-                disabled={busy || !state || Boolean(pendingSpin)}
-                onClick={() => {
-                  setManage(!manage);
-                  setEditing(null);
-                  setConfirmingDelete(null);
-                }}
-              >
-                {manage ? <Check size={14} /> : <Pencil size={14} />}
-                {manage ? "Done" : "Manage"}
-              </button>
-            </div>
-            {lastDeleted && (
-              <div className="member-deleted-notice" role="status">
-                <span>
-                  <strong>{lastDeleted.name}</strong> was removed from the team.
-                </span>
-                <button
-                  className="text-button"
-                  disabled={busy || Boolean(pendingSpin)}
-                  onClick={() =>
-                    void mutate(`/api/people/${lastDeleted.id}/restore`, {})
-                  }
-                >
-                  <RotateCcw size={14} />
-                  Undo deletion
-                </button>
-                <button
-                  className="icon-button"
-                  aria-label="Dismiss deletion notice"
-                  onClick={() => setLastDeleted(null)}
-                >
-                  <X size={16} />
-                </button>
-              </div>
-            )}
-            <div className="roster-head">
-              <span>Teammate</span>
-              <button
-                onClick={() => setSortByPicks(!sortByPicks)}
-                aria-pressed={sortByPicks}
-              >
-                Picks {sortByPicks && <ArrowDown size={11} />}
-              </button>
-              <span>Next odds</span>
-            </div>
-            <div
-              className={`roster-list${editing || confirmingDelete ? " roster-editing" : ""}`}
-              aria-busy={!state}
-            >
-              {!state ? (
-                <div className="roster-placeholder">
-                  <LoaderCircle size={22} className="loading-icon" />
-                  <p>Loading your team…</p>
-                </div>
-              ) : !roster.length ? (
-                <div className="roster-placeholder">
-                  <Users size={29} strokeWidth={1.4} />
-                  <strong>No teammates yet</strong>
-                  <button
-                    className="text-button"
-                    onClick={() => nameInput.current?.focus()}
-                  >
-                    Add the first person <ArrowUpRight size={14} />
-                  </button>
-                </div>
-              ) : (
-                roster.map((person) => (
-                  <div
-                    className={`person-row ${person.active ? "" : "person-paused"}`}
-                    key={person.id}
-                  >
-                    <div className="person-identity">
-                      <Avatar
-                        id={person.id}
-                        name={person.name}
-                        color={person.color}
-                        photoUrl={person.photoUrl}
-                      />
-                      <div className="person-copy">
-                        <span className="person-name" title={person.name}>
-                          {person.name}
-                        </span>
-                        {manage ? (
-                          <div className="person-tools">
-                            <button
-                              disabled={busy || Boolean(pendingSpin)}
-                              aria-expanded={editing === person.id}
-                              onClick={() => {
-                                setEditing(
-                                  editing === person.id ? null : person.id,
-                                );
-                                setConfirmingDelete(null);
-                              }}
-                            >
-                              Edit
-                            </button>
-                            <button
-                              disabled={busy || Boolean(pendingSpin)}
-                              onClick={() =>
-                                void mutate(
-                                  `/api/people/${person.id}`,
-                                  { active: !person.active },
-                                  "PATCH",
-                                )
-                              }
-                            >
-                              {person.active ? (
-                                <Pause size={10} />
-                              ) : (
-                                <Play size={10} />
-                              )}
-                              {person.active ? "Pause" : "Resume"}
-                            </button>
-                            <button
-                              className="delete-member"
-                              aria-label={`Delete ${person.name}`}
-                              disabled={busy || Boolean(pendingSpin)}
-                              onClick={() => {
-                                setConfirmingDelete(person.id);
-                                setEditing(null);
-                              }}
-                            >
-                              <Trash2 size={11} />
-                              Delete
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="person-subtitle">
-                            {!person.active
-                              ? "Paused"
-                              : person.lastPickedAt
-                                ? `Last picked ${new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(new Date(person.lastPickedAt))}`
-                                : "Not picked yet"}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <span className="pick-count">{person.count}</span>
-                    <span className="person-odds">
-                      {person.active
-                        ? percentage(odds.get(person.id) ?? 0)
-                        : "—"}
-                    </span>
-                    {confirmingDelete === person.id && (
-                      <div
-                        className="member-delete-confirmation"
-                        role="group"
-                        aria-label={`Delete ${person.name}?`}
-                      >
-                        <p>
-                          Delete <strong>{person.name}</strong> from the team?
-                        </p>
-                        <p className="delete-history-note">
-                          Past picks and statistics will be kept.
-                        </p>
-                        <div className="delete-actions">
-                          <button
-                            className="text-button"
-                            disabled={busy}
-                            autoFocus
-                            onClick={() => setConfirmingDelete(null)}
-                          >
-                            Cancel deletion
-                          </button>
-                          <button
-                            className="button confirm-member-delete"
-                            aria-label={`Confirm deleting ${person.name}`}
-                            disabled={busy || Boolean(pendingSpin)}
-                            onClick={() => void removeMember(person)}
-                          >
-                            {operation === "save" ? (
-                              <LoaderCircle
-                                size={14}
-                                className="loading-icon"
-                              />
-                            ) : (
-                              <Trash2 size={14} />
-                            )}
-                            Delete member
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                    {editing === person.id && (
-                      <PersonEditor
-                        person={person}
-                        disabled={busy || Boolean(pendingSpin)}
-                        onCancel={() => setEditing(null)}
-                        onSave={(values) =>
-                          mutate(`/api/people/${person.id}`, values, "PATCH")
-                        }
-                      />
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-            <form
-              className="add-person"
-              onSubmit={async (event) => {
-                event.preventDefault();
-                if (
-                  name.trim() &&
-                  (await mutate("/api/people", { name: name.trim() }))
-                ) {
-                  setName("");
-                  nameInput.current?.focus();
-                }
-              }}
-            >
-              <label htmlFor="person-name" className="sr-only">
-                Teammate’s name
-              </label>
-              <input
-                id="person-name"
-                ref={nameInput}
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                placeholder="Add a teammate’s name"
-                maxLength={60}
-                autoComplete="off"
-                disabled={!state || busy || Boolean(pendingSpin)}
-                required
-              />
-              <button
-                aria-label="Add teammate"
-                disabled={
-                  !state || busy || !name.trim() || Boolean(pendingSpin)
-                }
-              >
-                <Plus size={21} />
-              </button>
-            </form>
-            <div className="team-panel-footer">
-              <span className="status-dot" /> {candidates.length} active ·{" "}
-              {state?.totalPicks ?? 0} picks saved
-            </div>
-          </aside>
         </div>
         <section className="history-section" aria-labelledby="history-heading">
           <div className="history-heading">
@@ -983,6 +798,263 @@ export default function Home() {
           )}
         </section>
       </main>
+      <TeamDrawer
+        open={teamOpen}
+        onClose={closeTeam}
+        returnFocusRef={teamButton}
+      >
+        <aside className="team-panel" aria-labelledby="team-heading">
+          <div className="panel-heading">
+            <div className="panel-title">
+              <h2 id="team-heading">Your team</h2>
+              <span className="count-tag">{state?.people.length ?? 0}</span>
+            </div>
+            <div className="team-panel-actions">
+              <button
+                className="text-button manage-button"
+                aria-pressed={manage}
+                disabled={busy || !state || Boolean(pendingSpin)}
+                onClick={() => {
+                  setManage(!manage);
+                  setEditing(null);
+                  setConfirmingDelete(null);
+                }}
+              >
+                {manage ? <Check size={14} /> : <Pencil size={14} />}
+                {manage ? "Done" : "Manage"}
+              </button>
+              <button
+                className="icon-button close-team"
+                aria-label="Close team"
+                onClick={closeTeam}
+                autoFocus
+              >
+                <X size={20} />
+              </button>
+            </div>
+          </div>
+          {teamOpen && errorNotice}
+          {lastDeleted && (
+            <div className="member-deleted-notice" role="status">
+              <span>
+                <strong>{lastDeleted.name}</strong> was removed from the team.
+              </span>
+              <button
+                className="text-button"
+                disabled={busy || Boolean(pendingSpin)}
+                onClick={() =>
+                  void mutate(`/api/people/${lastDeleted.id}/restore`, {})
+                }
+              >
+                <RotateCcw size={14} />
+                Undo deletion
+              </button>
+              <button
+                className="icon-button"
+                aria-label="Dismiss deletion notice"
+                onClick={() => setLastDeleted(null)}
+              >
+                <X size={16} />
+              </button>
+            </div>
+          )}
+          <div className="roster-head">
+            <span>Teammate</span>
+            <button
+              onClick={() => setSortByPicks(!sortByPicks)}
+              aria-pressed={sortByPicks}
+            >
+              Picks {sortByPicks && <ArrowDown size={11} />}
+            </button>
+            <span>Next odds</span>
+          </div>
+          <div
+            className={`roster-list${editing || confirmingDelete ? " roster-editing" : ""}`}
+            aria-busy={!state}
+          >
+            {!state ? (
+              <div className="roster-placeholder">
+                <LoaderCircle size={22} className="loading-icon" />
+                <p>Loading your team…</p>
+              </div>
+            ) : !roster.length ? (
+              <div className="roster-placeholder">
+                <Users size={29} strokeWidth={1.4} />
+                <strong>No teammates yet</strong>
+                <button
+                  className="text-button"
+                  onClick={() => nameInput.current?.focus()}
+                >
+                  Add the first person <ArrowUpRight size={14} />
+                </button>
+              </div>
+            ) : (
+              roster.map((person) => (
+                <div
+                  className={`person-row ${person.active ? "" : "person-paused"}`}
+                  key={person.id}
+                >
+                  <div className="person-identity">
+                    <Avatar
+                      id={person.id}
+                      name={person.name}
+                      color={person.color}
+                      photoUrl={person.photoUrl}
+                    />
+                    <div className="person-copy">
+                      <span className="person-name" title={person.name}>
+                        {person.name}
+                      </span>
+                      {manage ? (
+                        <div className="person-tools">
+                          <button
+                            disabled={busy || Boolean(pendingSpin)}
+                            aria-expanded={editing === person.id}
+                            onClick={() => {
+                              setEditing(
+                                editing === person.id ? null : person.id,
+                              );
+                              setConfirmingDelete(null);
+                            }}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            disabled={busy || Boolean(pendingSpin)}
+                            onClick={() =>
+                              void mutate(
+                                `/api/people/${person.id}`,
+                                { active: !person.active },
+                                "PATCH",
+                              )
+                            }
+                          >
+                            {person.active ? (
+                              <Pause size={10} />
+                            ) : (
+                              <Play size={10} />
+                            )}
+                            {person.active ? "Pause" : "Resume"}
+                          </button>
+                          <button
+                            className="delete-member"
+                            aria-label={`Delete ${person.name}`}
+                            disabled={busy || Boolean(pendingSpin)}
+                            onClick={() => {
+                              setConfirmingDelete(person.id);
+                              setEditing(null);
+                            }}
+                          >
+                            <Trash2 size={11} />
+                            Delete
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="person-subtitle">
+                          {!person.active
+                            ? "Paused"
+                            : person.lastPickedAt
+                              ? `Last picked ${new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(new Date(person.lastPickedAt))}`
+                              : "Not picked yet"}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <span className="pick-count">{person.count}</span>
+                  <span className="person-odds">
+                    {person.active ? percentage(odds.get(person.id) ?? 0) : "—"}
+                  </span>
+                  {confirmingDelete === person.id && (
+                    <div
+                      className="member-delete-confirmation"
+                      role="group"
+                      aria-label={`Delete ${person.name}?`}
+                    >
+                      <p>
+                        Delete <strong>{person.name}</strong> from the team?
+                      </p>
+                      <p className="delete-history-note">
+                        Past picks and statistics will be kept.
+                      </p>
+                      <div className="delete-actions">
+                        <button
+                          className="text-button"
+                          disabled={busy}
+                          autoFocus
+                          onClick={() => setConfirmingDelete(null)}
+                        >
+                          Cancel deletion
+                        </button>
+                        <button
+                          className="button confirm-member-delete"
+                          aria-label={`Confirm deleting ${person.name}`}
+                          disabled={busy || Boolean(pendingSpin)}
+                          onClick={() => void removeMember(person)}
+                        >
+                          {operation === "save" ? (
+                            <LoaderCircle size={14} className="loading-icon" />
+                          ) : (
+                            <Trash2 size={14} />
+                          )}
+                          Delete member
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {editing === person.id && (
+                    <PersonEditor
+                      person={person}
+                      disabled={busy || Boolean(pendingSpin)}
+                      onCancel={() => setEditing(null)}
+                      onSave={(values) =>
+                        mutate(`/api/people/${person.id}`, values, "PATCH")
+                      }
+                    />
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+          <form
+            className="add-person"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              if (
+                name.trim() &&
+                (await mutate("/api/people", { name: name.trim() }))
+              ) {
+                setName("");
+                nameInput.current?.focus();
+              }
+            }}
+          >
+            <label htmlFor="person-name" className="sr-only">
+              Teammate’s name
+            </label>
+            <input
+              id="person-name"
+              ref={nameInput}
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="Add a teammate’s name"
+              maxLength={60}
+              autoComplete="off"
+              disabled={!state || busy || Boolean(pendingSpin)}
+              required
+            />
+            <button
+              aria-label="Add teammate"
+              disabled={!state || busy || !name.trim() || Boolean(pendingSpin)}
+            >
+              <Plus size={21} />
+            </button>
+          </form>
+          <div className="team-panel-footer">
+            <span className="status-dot" /> {candidates.length} active ·{" "}
+            {state?.totalPicks ?? 0} picks saved
+          </div>
+        </aside>
+      </TeamDrawer>
       {syncError && (
         <footer className="page-footer" role="status">
           <span>

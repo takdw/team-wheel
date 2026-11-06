@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   candidateMidpoint,
+  candidateLandingAngle,
   getCandidates,
   secureFraction,
   selectCandidate,
@@ -81,4 +82,22 @@ test("cryptographic fractions are finite and inside the selection interval", () 
     const fraction = secureFraction();
     assert.ok(Number.isFinite(fraction) && fraction >= 0 && fraction < 1);
   }
+});
+
+test("landing positions range across the selected weighted slice, including near either edge", () => {
+  const candidates = getCandidates(people([3, 3, 4]), "balanced");
+  const nearStart = candidateLandingAngle(candidates, "2", 0);
+  const center = candidateLandingAngle(candidates, "2", 0.5);
+  const nearEnd = candidateLandingAngle(candidates, "2", 1 - Number.EPSILON);
+  assert.ok(nearStart > 288 && nearStart < 289);
+  assert.equal(center, 324);
+  assert.ok(nearEnd > 359 && nearEnd < 360);
+  for (const fraction of [0, 0.02, 0.25, 0.5, 0.8, 1 - Number.EPSILON]) {
+    for (const candidate of candidates) {
+      const landing = candidateLandingAngle(candidates, candidate.id, fraction);
+      assert.equal(selectCandidate(candidates, landing / 360).id, candidate.id);
+    }
+  }
+  assert.throws(() => candidateLandingAngle(candidates, "2", 1));
+  assert.throws(() => candidateLandingAngle(candidates, "missing", 0.5));
 });

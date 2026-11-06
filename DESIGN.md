@@ -129,7 +129,7 @@ components:
   team-panel:
     backgroundColor: "{colors.surface}"
     rounded: "{rounded.panel}"
-    padding: "26px 24px 0"
+    padding: "20px 24px 0"
   count-tag:
     backgroundColor: "{colors.sage}"
     rounded: "{rounded.count}"
@@ -149,7 +149,7 @@ components:
     textColor: "{colors.ink}"
     typography: "{typography.brand}"
   wheel-assembly:
-    width: "400px"
+    width: "min(available width - 28px, clamp(280px, 100svh - 440px, 560px))"
 ---
 
 # Design System: Team Wheel
@@ -166,11 +166,11 @@ The interface stays clear and familiar: real buttons, inline forms, a native dis
 
 - Warm paper surfaces with dark green type and controls.
 - Participant colors and optional photos repeated across wheel, roster, winner, and history.
-- Compact, aligned working data beside a generous circular wheel.
+- A centered circular wheel with team management in a left slide-over.
 - Native web controls, visible keyboard focus, and explicit state text.
 - Saved-result deceleration with an instant reduced-motion alternative.
 
-This record describes the implemented system in `app/globals.css`, `app/page.tsx`, `app/components/person-editor.tsx`, `app/components/avatar.tsx`, `lib/wheel.ts`, and `lib/motion.ts`. The review captures show explicitly local demo names and counts; they do not establish a default roster. No approved image comp is a design authority for this build.
+This record describes the implemented system in `app/globals.css`, `app/page.tsx`, `app/components/person-editor.tsx`, `app/components/avatar.tsx`, `app/components/team-drawer.tsx`, `lib/wheel.ts`, and `lib/motion.ts`. The review captures show explicitly local demo names and counts; they do not establish a default roster. No approved image comp is a design authority for this build.
 
 ## Colors
 
@@ -230,21 +230,23 @@ The variable font is self-hosted through `@fontsource-variable/manrope`. Rounded
 
 ## Layout
 
-The page is a centered container with an upper working area and full-width history below. Above 1100px, its maximum width is 1440px with 64px side padding. The working area pairs a flexible wheel column with a 340–410px roster, separated by 65px. This composition belongs to the main-screen surface; future screens inherit the spacing and alignment discipline rather than duplicating its two columns.
+The page centers the wheel, mode controls, result, and spin action in one column, with full-width history below. Team management opens from the header in a left slide-over; it takes no space while closed. The native modal dialog is at most 440px wide, leaves a 20px backdrop strip on phones, and fills the dynamic viewport height. The drawer scrolls independently with a sticky heading and an uncapped roster. Its flat surface uses 24px side padding, reduced to 20px on phones.
 
-The stylesheet's later desktop rules are authoritative: at widths of at least 801px, the header is 82px high, main content starts after 32px, the heading-to-workspace gap is 24px, and the wheel is at most 400px wide. The earlier 444px and large-screen 475px wheel declarations are overridden.
+The wheel uses `min(available width - 28px, clamp(280px, 100svh - 440px, 560px))`. Short desktops use a 420px cap and `100svh - 380px` so the spin control remains visible. Main content starts after 24px, with an 18px heading-to-workspace gap. The rotating square is clipped with 24px of overflow allowance for its shadow and right-hand pointer, preventing horizontal page overflow at angled finishes.
 
 | Condition | Actual behavior |
 | --- | --- |
-| At least 1600px wide | Container maximum becomes 1480px with 75px padding; roster is 440px, column gap 90px. The later desktop wheel cap still applies. |
-| At most 1100px wide | Side padding is 35px, roster 350px, column gap 30px, panel side padding 20px. |
-| At most 800px wide | Side padding is 25px; header is 77px; wheel, roster, and history stack in source order. The wheel is at most 420px and the roster at most 560px. Header sync text is hidden; a connection error still appears in the footer. |
-| At most 440px wide | Side padding is 18px; the wheel fills available width. Spin action is full width up to 290px. Share control and brand compact; panel side padding becomes 18px. Footer stacks. |
-| At least 801px wide and at most 800px high | Header becomes 70px, main top space 24px, heading bottom space 22px, wheel cap 330px, result reserve 72px, spin action minimum height 46px. Roster scroll area caps at 270px. |
+| At least 1600px wide | Container maximum 1480px with 75px side padding. |
+| At least 1101px wide | Container maximum 1440px with 64px side padding; header 82px high. |
+| At most 1100px wide | Side padding 35px. |
+| At most 800px wide | Side padding 25px; header 77px. Header sync text is hidden, copy action becomes icon-only, and the Team trigger stays visible. |
+| At most 440px wide | Side padding 18px; wheel fits available width; spin action up to 290px. |
+| At most 360px wide | Team count hides and brand compacts to preserve header actions. |
+| At least 801px wide and at most 800px high | Header 70px, result reserve 72px, spin action minimum height 46px. |
 
-Working spacing reuses small 4–16px control increments and 20–32px section/panel intervals. One-pixel dividers and aligned columns organize dense data. Roster rows are at least 70px; the scrolling roster normally caps at 429px, rises to 458px on very wide screens, and caps at 400px on stacked layouts. The short-desktop rule overrides these caps.
+Working spacing reuses small 4–16px control increments and 20–32px section intervals. One-pixel dividers and aligned columns organize dense roster data. Roster rows are at least 70px. The drawer owns scrolling while open; the page is locked behind it.
 
-History remains a real table inside a horizontal scrolling container. Below 441px the table retains a 490px minimum width, allowing dates and actions to scroll into view rather than crushing their columns. Names truncate in the roster and history with full names in title attributes; long winner names wrap. Wheel labels truncate to 18 characters, or 11 above 14 candidates; photo-bearing labels use 14. Text is omitted for slices of 2.5% or less, and photos below 5%; the roster retains the corresponding person and odds. Opening a participant editor or deletion confirmation removes the roster's scroll cap so its controls stay visible. Its swatches and photo actions wrap on narrow screens.
+History remains a semantic table in a horizontal scrolling container, retaining a 490px minimum width below 441px. Names truncate in roster/history with full names in title attributes; long winner names wrap. Wheel labels truncate to 18 characters, or 11 above 14 candidates; photo-bearing labels use 14. Text is omitted for slices of 2.5% or less, and photos below 5%; Team retains the person and numeric odds. Profile controls and deletion confirmation wrap within the drawer.
 
 ## Elevation & Depth
 
@@ -263,7 +265,7 @@ Depth is primarily tonal: paper beneath an off-white roster, fine borders, and q
 
 ## Shapes
 
-The dominant silhouette is a circle: wheel, stationary hub, pointer relationship, brand disc, and participant avatars. SVG wedges are separated by fine pale strokes and an outer ring. The pointer remains centered above the rotating disc; the hub remains stationary.
+The dominant silhouette is a circle: wheel, stationary hub, pointer relationship, brand disc, and participant avatars. SVG wedges are separated by fine pale strokes and an outer ring. The pointer remains fixed at 3 o’clock, pointing left into the rotating disc; the hub remains stationary.
 
 Supporting controls have modest rounded corners rather than pills: panel, button, field, track, segment, count, and tag radii use the frontmatter roles. A one-pixel line frames the roster and input group. Tiny icon buttons use the smallest radii. Line icons are Lucide SVGs; identity initials are text, not decorative glyph icons.
 
@@ -292,9 +294,9 @@ The active-person count is a sage square with a minimum 23px size. Pick counts u
 
 ### Cards / Containers
 
-One quiet roster container keeps the working data together.
+A left slide-over keeps team management available without competing with the wheel.
 
-The roster uses surface, line, the panel radius, and panel padding from frontmatter; it has no shadow. Its footer uses a subtly tinted `#f8f9f3` strip with matching bottom corners. Three aligned columns show name, picks, and next odds. A circular photo or initials avatar repeats the participant's selected color. Paused participants remain visible with a grayscale avatar, muted name, explicit Paused label, and an em dash for odds.
+The drawer roster uses a flat surface without an outer border, radius, or shadow. Its footer uses a subtly tinted `#f8f9f3` strip spanning the drawer width. Three aligned columns show name, picks, and next odds. A circular photo or initials avatar repeats the participant's selected color. Paused participants remain visible with a grayscale avatar, muted name, explicit Paused label, and an em dash for odds.
 
 ### Inputs / Fields
 
@@ -314,7 +316,7 @@ Roster avatars are 34px, history 28px, winner 40px, and editor previews 56px. Ph
 
 ### Navigation and access
 
-The header's brand link leads home; a native button copies the team URL. There is no separate tab bar or custom route navigation. The compact mobile header retains both actions. The sync label reads Connecting, Saved for your team, or Reconnecting; a footer appears only for connection interruption. Copy stays functional and concise, without decorative slogans.
+The header’s brand link leads home; Team opens the left drawer and a native button copies the team URL. The drawer closes via Escape, its Close team control, or the backdrop. Native modal behavior keeps keyboard interaction in the drawer; closing restores focus to the opener, falling back to the header Team button if the empty-wheel opener was removed. Opening animates left-to-right over 260ms with a 200ms scrim fade; reduced motion removes the slide. There is no separate tab bar or custom route navigation. The compact mobile header retains both actions. The sync label reads Connecting, Saved for your team, or Reconnecting; a footer appears only for connection interruption. Copy stays functional and concise, without decorative slogans.
 
 Access is supplied by the hosting environment rather than a designed in-app account screen: Sites presents its access page, and independent hosting uses the browser's native Basic Authentication challenge. Do not infer a custom sign-in form from this system.
 
@@ -324,14 +326,14 @@ Probability becomes a visible piece of the shared table.
 
 The live SVG has a 520-unit viewBox with probability-proportional sectors. Random gives every active person equal area; Balanced weights each active person by `1 / (1 + picks - minimum active picks)`. The stationary pointer identifies the final slice. Accessible SVG text points users to the roster's numeric odds; the winner is announced through an atomic polite live status region.
 
-Only after the selection is saved does the disc turn through at least five full revolutions, landing at the selected sector's midpoint. The animation lasts 4300ms with `cubic-bezier(.12,.72,.12,1)`. While a spin is being saved, status says “Saving your selection…”; during rotation it says “Spinning…”. Roster saves and undo disable conflicting controls while retaining the idle spin label and current result. The result and saved snapshot reveal together when motion finishes. Reduced-motion preference applies the final rotation and completion synchronously, without creating a rotation animation. CSS also collapses incidental transition/loader animation durations to 0.01ms.
+Only after the selection is saved does the disc turn through five to seven full revolutions, landing at a separately randomized point inside the selected slice. A tiny divider margin prevents an ambiguous exact-edge finish. The saved angle makes retries land in the same place; old picks retain their original midpoint. Independent cryptographic fractions vary the turns and duration from 5200–6800ms, with `cubic-bezier(.12,.72,.12,1)`. Selection probabilities are unchanged. While a spin is being saved, status says “Saving your selection…”; during rotation it says “Spinning…”. Roster saves and undo disable conflicting controls while retaining the idle spin label and current result. The result and saved snapshot reveal together when motion finishes. Reduced-motion preference applies the final rotation and completion synchronously, without creating a rotation animation. CSS also collapses incidental transition/loader animation durations to 0.01ms.
 
 ### Loading, empty, error, and history states
 
 - **Loading:** a labeled spinner occupies the roster with `aria-busy`; history reports that it is loading. Data-dependent controls remain disabled.
-- **Empty:** no default people are supplied. Eight pale placeholder sectors sit behind “Add your team” and “Enter a name to start.” with the hub hidden. The roster invites the first name and can focus the add field. With no active candidates, spinning is disabled. An all-paused roster keeps its people visible.
+- **Empty:** no default people are supplied. Eight pale placeholder sectors sit behind “Add teammates” and “Enter a name to start.” with the hub hidden. The action opens the drawer. The roster invites the first name and can focus the add field. With no active candidates, spinning is disabled. An all-paused wheel offers Open team to resume someone.
 - **History empty:** a quiet tinted container with a circular history icon prompts a spin to add the first pick. It is a local state, not a modal.
-- **Error:** a warm error banner above the workspace uses `role="alert"`, explanatory text, Refresh, and a named dismiss action. A failed spin may retain its pending identity; “Retry this spin” resumes that same selection. Pending state disables roster and mode changes.
+- **Error:** a warm error banner above the workspace, or inside the drawer while open, uses `role="alert"`, explanatory text, Refresh, and a named dismiss action. A failed spin may retain its pending identity; “Retry this spin” resumes that same selection. Pending state disables roster and mode changes.
 - **History:** named columns pair participant, mode, time, and the latest valid pick's Undo action. Undone entries remain visible with a grayscale avatar, a struck name, and explicit “Undone” text. Show older picks appends older entries and displays a loading icon during the request.
 - **Odds help:** a native `details`/`summary` disclosure expands the probability explanation in place, with a chevron that reverses when open.
 

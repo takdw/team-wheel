@@ -13,7 +13,11 @@ import {
   undoPick,
   updatePerson,
 } from "../lib/store";
-import { getCandidates } from "../lib/wheel";
+import {
+  candidateMidpoint,
+  getCandidates,
+  selectCandidate,
+} from "../lib/wheel";
 
 function database() {
   const sqlite = new DatabaseSync(":memory:");
@@ -127,6 +131,7 @@ test("replaying the same request, including simultaneously, records exactly one 
       spin(db, id, "random"),
     ]);
     assert.equal(results[0].pick.personId, results[1].pick.personId);
+    assert.equal(results[0].landingAngle, results[1].landingAngle);
     assert.equal((await getSnapshot(db)).totalPicks, 1);
     await assert.rejects(spin(db, id, "balanced"), /another mode/);
   } finally {
@@ -309,6 +314,50 @@ test("deleted members free roster capacity and restoring still respects the limi
     await addPerson(db, "Replacement");
     assert.equal((await getSnapshot(db)).people.length, 100);
     await assert.rejects(restorePerson(db, person.id), /team is full/);
+  } finally {
+    close();
+  }
+});
+
+test("the random landing is saved and replayed with the same winner without another pick", async () => {
+  const { db, close } = database();
+  try {
+    await addPerson(db, "A");
+    await addPerson(db, "B");
+    await addPerson(db, "C");
+    const id = crypto.randomUUID();
+    const result = await spin(db, id, "balanced");
+    assert.ok(result.landingAngle >= 0 && result.landingAngle < 360);
+    assert.equal(
+      selectCandidate(result.candidates, result.landingAngle / 360).id,
+      result.pick.personId,
+    );
+    const replay = await spin(db, id, "balanced");
+    assert.equal(replay.landingAngle, result.landingAngle);
+    assert.equal(replay.pick.personId, result.pick.personId);
+    assert.equal(replay.state.totalPicks, 1);
+  } finally {
+    close();
+  }
+});
+
+test("old saved spins without an angle keep their original centered landing on replay", async () => {
+  const { db, close } = database();
+  try {
+    await addPerson(db, "Legacy member");
+    const result = await spin(db, crypto.randomUUID(), "random");
+    await db
+      .prepare(
+        "UPDATE picks SET landing_angle = NULL WHERE id = ? RETURNING id",
+      )
+      .bind(result.pick.id)
+      .all();
+    const replay = await spin(db, result.pick.id, "random");
+    assert.equal(
+      replay.landingAngle,
+      candidateMidpoint(replay.candidates, replay.pick.personId),
+    );
+    assert.equal(replay.state.totalPicks, 1);
   } finally {
     close();
   }

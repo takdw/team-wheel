@@ -3,6 +3,7 @@ import {
   check,
   index,
   integer,
+  real,
   sqliteTable,
   text,
 } from "drizzle-orm/sqlite-core";
@@ -32,6 +33,7 @@ export const picks = sqliteTable(
     personName: text("person_name").notNull(),
     mode: text("mode", { enum: ["random", "balanced"] }).notNull(),
     candidates: text("candidates").notNull(),
+    landingAngle: real("landing_angle"),
     createdAt: text("created_at").notNull(),
     undoneAt: text("undone_at"),
   },

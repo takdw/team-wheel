@@ -27,6 +27,9 @@ A simple spinning wheel with random and balanced modes, per-person counters, and
 - Undo the latest valid pick while retaining its audit entry.
 - Server-side cryptographic selection, durable results before animation, and concurrency protection.
 - Accessible responsive interface with reduced motion.
+- Center the wheel on the main screen; keep team management in a modal drawer opening from the left.
+- Put the fixed selection pointer at three o'clock. Save a random landing position inside the winner's slice, including near either edge, and preserve it across retries.
+- Vary the number of turns and coasting duration while keeping selection odds unchanged.
 
 ## Delivery Constraints
 Create the standalone project in /Users/tamrat/code/team-wheel, outside all Kadonation repositories. Prefer a free hosting platform with a lightweight hosted database and clear deployment instructions. Keep implementation and ongoing operation simple.

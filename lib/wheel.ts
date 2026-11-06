@@ -38,6 +38,7 @@ export interface Snapshot {
 export interface SpinResult {
   pick: Pick;
   candidates: Candidate[];
+  landingAngle: number;
   state: Snapshot;
 }
 
@@ -117,9 +118,24 @@ export function textColor(background: string): string {
   return value > 0.179 ? "#000000" : "#ffffff";
 }
 export function candidateMidpoint(candidates: Candidate[], id: string): number {
+  return candidateLandingAngle(candidates, id, 0.5);
+}
+
+export function candidateLandingAngle(
+  candidates: Candidate[],
+  id: string,
+  fraction: number,
+): number {
+  if (!Number.isFinite(fraction) || fraction < 0 || fraction >= 1) {
+    throw new Error("Landing needs a fraction in [0, 1).");
+  }
   let offset = 0;
   for (const candidate of candidates) {
-    if (candidate.id === id) return (offset + candidate.probability / 2) * 360;
+    if (candidate.id === id) {
+      // Avoid the exact divider while still allowing landings very close to either edge.
+      const position = 0.0001 + fraction * 0.9998;
+      return (offset + candidate.probability * position) * 360;
+    }
     offset += candidate.probability;
   }
   throw new Error("The selected person is missing from this wheel.");

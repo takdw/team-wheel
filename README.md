@@ -57,17 +57,23 @@ The `.openai/hosting.json` manifest retains the project's Sites identity and `DB
 
 ## Delete a member
 
-Choose **Manage → Delete** beside a teammate, then confirm **Delete member**. **Cancel deletion** leaves them unchanged. Deleted members leave the roster and future spins; their past picks, totals, and most-picked statistics remain in history.
+Open **Team**, then choose **Manage → Delete** beside a teammate, then confirm **Delete member**. **Cancel deletion** leaves them unchanged. Deleted members leave the roster and future spins; their past picks, totals, and most-picked statistics remain in history.
 
 After deletion, choose **Undo deletion** in the notice to restore the same member, including their profile, pick count, and previous paused/active state. The notice stays until dismissed or another change is saved. Deleting a member frees roster capacity. Pausing remains available for temporarily excluding a teammate.
 
 ## Colors and profile photos
 
-Choose **Manage → Edit** beside a teammate to change their name, choose a preset or custom color, and upload a profile photo. Save the changes to share them with the team. **Use default color** restores the automatic color; **Remove** clears the photo and brings back initials.
+Open **Team**, then choose **Manage → Edit** beside a teammate to change their name, choose a preset or custom color, and upload a profile photo. Save the changes to share them with the team. **Use default color** restores the automatic color; **Remove** clears the photo and brings back initials.
 
 Photos accept JPG, PNG, and WebP files up to 10 MB. The browser center-crops and resizes each photo to 128×128 before saving it (maximum 48 KB). The database stores only this compact version. Photos are served through the authenticated app with versioned, private cache headers; roster refreshes contain photo URLs rather than image payloads. No additional storage service is required. Labels adapt to custom colors for contrast.
 
 The roster, wheel, winner, and pick history show the current profile photo. Historical names and the colors used for past spins remain recorded in saved selections.
+
+## Team drawer and spinning
+
+**Team** in the header opens team management from the left, keeping the main view focused on the wheel. Close the drawer with its close button, Escape, or the backdrop. Keyboard focus stays within the open drawer and returns to the opener on close. Empty or fully paused wheels include an action to open Team.
+
+The pointer sits at **three o'clock**. Each new spin saves a cryptographically random position inside the selected person's slice, so finishes can be near either edge rather than always at the midpoint. Retries return the same saved landing. The animation varies between 5–7 full turns and 5.2–6.8 seconds, with a slow coast; reduced-motion mode shows the final result immediately. These visual choices do not change the random or balanced selection probabilities. Older saved spins without a landing position retain their original centered finish when replayed.
 
 ## Selection rules
 

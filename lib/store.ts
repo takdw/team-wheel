@@ -7,7 +7,13 @@ import type {
   Snapshot,
   SpinResult,
 } from "./wheel";
-import { getCandidates, secureFraction, selectCandidate } from "./wheel";
+import {
+  candidateLandingAngle,
+  candidateMidpoint,
+  getCandidates,
+  secureFraction,
+  selectCandidate,
+} from "./wheel";
 import type { PersonUpdate } from "./profile";
 
 export class AppError extends Error {
@@ -25,6 +31,7 @@ interface PickRow {
   person_name: string;
   mode: Mode;
   candidates: string;
+  landing_angle: number | null;
   created_at: string;
   undone_at: string | null;
 }
@@ -226,9 +233,13 @@ export async function spin(
           "This spin request was already used for another mode.",
           409,
         );
+      const candidates = JSON.parse(existing.candidates) as Candidate[];
       return {
         pick: toPick(existing),
-        candidates: JSON.parse(existing.candidates) as Candidate[],
+        candidates,
+        landingAngle:
+          existing.landing_angle ??
+          candidateMidpoint(candidates, existing.person_id),
         state: await getSnapshot(db),
       };
     }
@@ -237,12 +248,17 @@ export async function spin(
     if (!candidates.length)
       throw new AppError("Add or resume a teammate before spinning.");
     const winner = selectCandidate(candidates, secureFraction());
+    const landingAngle = candidateLandingAngle(
+      candidates,
+      winner.id,
+      secureFraction(),
+    );
     // Competing edits, spins, or undo advance the revision through database triggers.
     // Only a draw from the current snapshot can commit; other draws retry with fresh counts.
     const result = await db
       .prepare(
-        `INSERT INTO picks (id, person_id, person_name, mode, candidates, created_at)
-      SELECT ?, ?, ?, ?, ?, ? WHERE (SELECT revision FROM wheel_state WHERE id = 1) = ?
+        `INSERT INTO picks (id, person_id, person_name, mode, candidates, landing_angle, created_at)
+      SELECT ?, ?, ?, ?, ?, ?, ? WHERE (SELECT revision FROM wheel_state WHERE id = 1) = ?
       ON CONFLICT(id) DO NOTHING RETURNING *`,
       )
       .bind(
@@ -251,6 +267,7 @@ export async function spin(
         winner.name,
         mode,
         JSON.stringify(candidates),
+        landingAngle,
         new Date().toISOString(),
         state.revision,
       )
@@ -259,6 +276,7 @@ export async function spin(
       return {
         pick: toPick(result.results[0]),
         candidates,
+        landingAngle,
         state: await getSnapshot(db),
       };
   }
