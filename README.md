@@ -1,0 +1,88 @@
+# Team Wheel
+
+A shared team wheel with random and balanced selection, per-person counters, and persistent pick history. Built with TypeScript, React, Vinext, Cloudflare Workers, and D1 (hosted SQLite).
+
+## Run locally
+
+Requires Node.js 24 LTS and npm. No Cloudflare account is needed for local development.
+
+```sh
+npm ci
+npm run build
+npm run db:migrate:local
+npm run dev
+```
+
+Open the Local URL printed by the server (normally http://localhost:5173). If that port is busy, run `npm run dev -- --port 5187`. Add your team's names in the interface. The local roster starts empty and persists in `.wrangler/state/`. Production has its own separate database.
+
+After changing the schema, use `npm run db:generate`, inspect the generated SQL, rebuild, and run `npm run db:migrate:local`. Applied migrations are immutable.
+
+## Deploy on Cloudflare's free plan
+
+Workers hosts the app; D1 stores the shared team data. Cloudflare supplies an HTTPS `workers.dev` address, so buying a domain is optional. The free plan currently includes 100,000 dynamic Worker requests/day and D1 allowances of 5 million rows read/day, 100,000 rows written/day, and 5 GB total storage. Account limits apply; check the official pricing before deployment:
+
+- https://developers.cloudflare.com/workers/platform/pricing/
+- https://developers.cloudflare.com/d1/platform/pricing/
+
+One-time setup, from this directory:
+
+```sh
+npx wrangler login
+npx wrangler d1 create team-wheel
+```
+
+Copy the returned database UUID, then:
+
+```sh
+export CLOUDFLARE_D1_DATABASE_ID='YOUR_DATABASE_UUID'
+npm run deploy
+npx wrangler secret put TEAM_PASSWORD --config dist/server/wrangler.cloudflare.json
+```
+
+The last command prompts privately for a strong shared passphrase. The app refuses access until this secret is set. Share the resulting `https://team-wheel.<your-subdomain>.workers.dev` address and passphrase with the team. The browser's sign-in prompt uses username **team**. No individual accounts or email service are required.
+
+`npm run deploy` builds, applies pending remote D1 migrations, and publishes the Worker. Subsequent deployments use the same command and retain the database and existing secret. Set `CLOUDFLARE_WORKER_NAME` if the default Worker name `team-wheel` is already used. Keep a record of your database UUID; it is an identifier, not a password. You can put it in your shell profile or CI configuration. For CI, use Cloudflare's `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` environment variables as well.
+
+To validate the deployment artifact without provisioning or publishing:
+
+```sh
+CLOUDFLARE_D1_DATABASE_ID='00000000-0000-4000-8000-000000000001' npm run deploy -- --dry-run
+```
+
+`npm run db:migrate:remote` applies migrations independently when `CLOUDFLARE_D1_DATABASE_ID` is set. Database exports/backups are available through Cloudflare D1, for example `npx wrangler d1 export team-wheel --remote --output team-wheel-backup.sql`. Keep exports private; they contain team names and history.
+
+### Sites preview
+
+The `.openai/hosting.json` manifest retains the project's Sites identity and `DB` binding. Sites provisions its own D1 database and applies the same migrations. Its preview uses platform access controls with `ACCESS_MODE=sites`; keep this value in Sites runtime settings. Independent Cloudflare deployments explicitly clear that mode and use `TEAM_PASSWORD` instead. Hosting deployments have separate databases; a Sites preview does not automatically transfer its data to an independently deployed Worker.
+
+## Selection rules
+
+- **Random:** every active person has the same probability on every spin. Previous picks have no effect; streaks are possible.
+- **Balanced:** `weight = 1 / (1 + person_count - minimum_active_count)`, then normalize the weights into probabilities. Counts of 3, 3, and 4 yield 40%, 40%, and 20%. This reduces repeat selections without guaranteeing a no-repeat order.
+- Counters include valid picks from both modes across all saved history. New people start at zero. Paused people retain their history but are excluded from selection and the balancing baseline. Duplicate display names are allowed; people have separate stable IDs.
+- The server uses `crypto.getRandomValues()` to draw a 53-bit uniform fraction. The animated wheel represents the odds used for that saved result; the roster shows the odds for the **next** spin.
+- The result is saved before the animation. Request IDs make retries idempotent. Database revision triggers and a conditional insert ensure competing spins use current counts; a stale draw is discarded and retried.
+- Only the latest valid pick can be undone. Undo retains the record and removes it from counts. Renaming a teammate preserves their name on past picks.
+- Other open tabs refresh every 15 seconds while visible and on focus. They share counts and history; they do not replay another person's wheel animation.
+
+## Development checks
+
+```sh
+npm run typecheck
+npm test
+npm run build
+```
+
+Tests use Node's test runner and in-memory SQLite with the real SQL migrations. They cover the odds, segment boundaries, saved counts, historical names, concurrent spins, duplicate requests, undo, pagination, and access checks. Local browser/API verification also exercises Cloudflare's D1 runtime.
+
+## Project map
+
+- `app/page.tsx`, `app/globals.css`: single-screen interface and wheel animation.
+- `lib/wheel.ts`: selection probabilities, entropy, and shared types.
+- `lib/store.ts`: D1 persistence, atomic selection, and history.
+- `app/api/[...path]/route.ts`: validated API endpoints.
+- `lib/access.ts`, `worker/index.ts`: deployment access and Worker entry point.
+- `db/schema.ts`, `drizzle/`: schema and versioned migrations.
+- `scripts/database.mjs`, `scripts/deploy-cloudflare.mjs`: local database setup and independent deployment.
+
+All members with access can edit the roster, spin, and undo the latest pick. This version is intentionally one team per deployment.
