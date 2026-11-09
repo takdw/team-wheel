@@ -92,11 +92,16 @@ async function handle(request: Request): Promise<Response> {
       await restorePerson(env.DB, uuid.parse(path.split("/")[3]));
     } else if (method === "POST" && path === "/api/spins") {
       const values = z
-        .object({ id: uuid, mode: z.enum(["random", "balanced"]) })
+        .object({
+          id: uuid,
+          mode: z.enum(["random", "balanced"]),
+          excludedIds: z.array(uuid).max(100).optional(),
+        })
         .parse(body);
-      return Response.json(await spin(env.DB, values.id, values.mode), {
-        headers,
-      });
+      return Response.json(
+        await spin(env.DB, values.id, values.mode, values.excludedIds),
+        { headers },
+      );
     } else if (method === "POST" && path === "/api/undo") {
       await undoPick(env.DB, z.object({ id: uuid }).parse(body).id);
     } else throw new AppError("That action could not be found.", 404);

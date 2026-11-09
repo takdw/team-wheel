@@ -1,7 +1,7 @@
 "use client";
 
 import type { CSSProperties, RefObject } from "react";
-import { LoaderCircle, Pause, Shuffle, X } from "lucide-react";
+import { Pause, Shuffle, X } from "lucide-react";
 import { palette, type Person, type Pick } from "@/lib/wheel";
 import { Avatar } from "./avatar";
 import { Modal } from "./modal";
@@ -22,10 +22,8 @@ export function WinnerDialog({
   pick,
   person,
   open,
-  busy,
   canSpin,
   canSpinWithoutWinner,
-  error,
   onClose,
   onSpin,
   onSitOut,
@@ -34,10 +32,8 @@ export function WinnerDialog({
   pick: Pick | undefined;
   person: Person | undefined;
   open: boolean;
-  busy: boolean;
   canSpin: boolean;
   canSpinWithoutWinner: boolean;
-  error: string;
   onClose: () => void;
   onSpin: () => void;
   onSitOut: () => void;
@@ -80,44 +76,21 @@ export function WinnerDialog({
               <p className="result-caption">You’re up next</p>
               <h2 id="winner-heading">{pick.personName}</h2>
             </div>
-            {error && (
-              <p className="winner-error" role="alert">
-                {error}
-              </p>
-            )}
             <div className="winner-actions">
               <button
                 className="button spin-button"
-                disabled={busy || !canSpin}
+                disabled={!canSpin}
                 onClick={onSpin}
               >
                 <Shuffle size={17} /> Spin again
               </button>
               {person?.active && (
-                <button
-                  className="button button-secondary"
-                  disabled={busy}
-                  onClick={onSitOut}
-                >
-                  {busy ? (
-                    <LoaderCircle size={16} className="loading-icon" />
-                  ) : (
-                    <Pause size={16} />
-                  )}
-                  {busy
-                    ? "Pausing…"
-                    : canSpinWithoutWinner
-                      ? "Sit out & spin again"
-                      : "Sit out"}
+                <button className="button button-secondary" onClick={onSitOut}>
+                  <Pause size={16} />
+                  {canSpinWithoutWinner ? "Sit out & spin again" : "Sit out"}
                 </button>
               )}
             </div>
-            {person?.active && (
-              <p className="winner-sit-out-help">
-                Sitting out pauses this teammate for everyone. Resume them from
-                Team.
-              </p>
-            )}
           </div>
         </>
       )}

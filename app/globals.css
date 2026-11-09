@@ -1612,16 +1612,6 @@ main {
 .winner-actions .spin-button svg:last-child {
   margin-left: 0;
 }
-.winner-sit-out-help,
-.winner-error {
-  max-width: 31ch;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.6;
-}
-.winner-error {
-  color: var(--danger);
-}
 .winner-confetti {
   position: absolute;
   inset: 0;

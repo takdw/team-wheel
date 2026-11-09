@@ -138,6 +138,42 @@ test("replaying the same request, including simultaneously, records exactly one 
     close();
   }
 });
+test("spin exclusions affect one session without saving a roster pause", async () => {
+  const { db, close } = database();
+  try {
+    for (const name of ["Sitting out", "Eligible", "Paused"]) {
+      await addPerson(db, name);
+    }
+    const { people } = await getSnapshot(db);
+    const sittingOut = people.find((person) => person.name === "Sitting out")!;
+    const eligible = people.find((person) => person.name === "Eligible")!;
+    const paused = people.find((person) => person.name === "Paused")!;
+    await updatePerson(db, paused.id, { active: false });
+
+    const id = crypto.randomUUID();
+    const sessionPick = await spin(db, id, "balanced", [sittingOut.id]);
+    assert.equal(sessionPick.pick.personId, eligible.id);
+    assert.equal(sessionPick.candidates[0].probability, 1);
+    assert.equal(
+      sessionPick.state.people.find((person) => person.id === sittingOut.id)
+        ?.active,
+      true,
+    );
+    assert.deepEqual(
+      (await spin(db, id, "balanced", [sittingOut.id])).candidates,
+      sessionPick.candidates,
+    );
+
+    const freshPick = await spin(db, crypto.randomUUID(), "balanced");
+    assert.deepEqual(
+      new Set(freshPick.candidates.map((person) => person.id)),
+      new Set([eligible.id, sittingOut.id]),
+    );
+    assert.equal(freshPick.state.totalPicks, 2);
+  } finally {
+    close();
+  }
+});
 test("undo affects only the latest valid pick and retains the audit record", async () => {
   const { db, close } = database();
   try {

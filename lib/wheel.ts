@@ -43,8 +43,14 @@ export interface SpinResult {
   state: Snapshot;
 }
 
-export function getCandidates(people: Person[], mode: Mode): Candidate[] {
-  const active = people.filter((person) => person.active);
+export function getCandidates(
+  people: Person[],
+  mode: Mode,
+  excludedIds: readonly string[] = [],
+): Candidate[] {
+  const active = people.filter(
+    (person) => person.active && !excludedIds.includes(person.id),
+  );
   if (!active.length) return [];
   const minimum = Math.min(...active.map((person) => person.count));
   const weights = active.map((person) =>

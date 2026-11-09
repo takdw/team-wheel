@@ -93,12 +93,14 @@ function Wheel({
   outcome,
   onFinish,
   onOpenTeam,
+  emptyNote,
 }: {
   candidates: Candidate[];
   people: Person[];
   outcome: SpinResult | null;
   onFinish: () => void;
   onOpenTeam: () => void;
+  emptyNote: string;
 }) {
   const rotor = useRef<HTMLDivElement>(null);
   const angle = useRef(0);
@@ -170,7 +172,7 @@ function Wheel({
           aria-label={
             candidates.length
               ? `Wheel with ${candidates.length} ${candidates.length === 1 ? "person" : "people"}. Individual odds are shown in Team.`
-              : "Add a teammate to start."
+              : emptyNote
           }
         >
           <circle cx="260" cy="260" r="255" fill="#f4f2ec" />
@@ -259,11 +261,7 @@ function Wheel({
           <button className="empty-team-button" onClick={onOpenTeam}>
             {people.length ? "Open team" : "Add teammates"}
           </button>
-          <span>
-            {people.length
-              ? "Resume a teammate to spin."
-              : "Enter a name to start."}
-          </span>
+          <span>{emptyNote}</span>
         </div>
       )}
     </div>
@@ -293,9 +291,11 @@ export default function Home() {
   const [outcome, setOutcome] = useState<SpinResult | null>(null);
   const [revealed, setRevealed] = useState(false);
   const [winnerOpen, setWinnerOpen] = useState(false);
+  const [sitOutIds, setSitOutIds] = useState<string[]>([]);
   const [pendingSpin, setPendingSpin] = useState<{
     id: string;
     mode: Mode;
+    excludedIds: string[];
   } | null>(null);
   const [older, setOlder] = useState<HistoryPage | null>(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -343,8 +343,8 @@ export default function Home() {
     };
   }, [refresh]);
   const candidates = useMemo(
-    () => getCandidates(state?.people ?? [], mode),
-    [state?.people, mode],
+    () => getCandidates(state?.people ?? [], mode, sitOutIds),
+    [state?.people, mode, sitOutIds],
   );
   const shownCandidates = outcome?.candidates ?? candidates;
   const odds = new Map(
@@ -352,7 +352,7 @@ export default function Home() {
   );
   const roster = [...(state?.people ?? [])].sort(
     (a, b) =>
-      Number(b.active) - Number(a.active) ||
+      Number(odds.has(b.id)) - Number(odds.has(a.id)) ||
       (sortByPicks ? b.count - a.count : 0),
   );
   const peopleById = new Map(
@@ -364,6 +364,11 @@ export default function Home() {
   const latestValid = state?.history.items.find((pick) => !pick.undoneAt);
   const leaders = state?.leaders ?? [];
   const topCount = leaders[0]?.count ?? 0;
+  const emptyNote = state?.people.some((person) => person.active)
+    ? "Refresh to clear sit-outs."
+    : state?.people.length
+      ? "Resume someone in Team."
+      : "Add a name to start.";
 
   function closeTeam() {
     setDrawer((current) => (current === "team" ? null : current));
@@ -377,22 +382,21 @@ export default function Home() {
   }
 
   async function mutate(path: string, body: unknown, method = "POST") {
-    if (operating.current) return null;
+    if (operating.current) return false;
     operating.current = true;
     setOperation("save");
     setError("");
     try {
-      const next = await request<Snapshot>(path, body, method);
-      apply(next);
+      apply(await request<Snapshot>(path, body, method));
       setOutcome(null);
       setRevealed(false);
       setLastDeleted(null);
-      return next;
+      return true;
     } catch (issue) {
       setError(
         issue instanceof Error ? issue.message : "Couldn’t save that change.",
       );
-      return null;
+      return false;
     } finally {
       operating.current = false;
       setOperation(null);
@@ -405,18 +409,27 @@ export default function Home() {
       setEditing(null);
     }
   }
-  async function startSpin(snapshot = state) {
+  async function startSpin(sittingOut = sitOutIds) {
+    if (operating.current) return;
+    const people = state?.people ?? [];
     if (
-      operating.current ||
-      (!snapshot?.people.some((person) => person.active) && !pendingSpin)
+      !pendingSpin &&
+      !people.some((person) => person.active && !sittingOut.includes(person.id))
     )
       return;
+    const excludedIds = people
+      .filter((person) => sittingOut.includes(person.id))
+      .map((person) => person.id);
     operating.current = true;
     setWinnerOpen(false);
     setOperation("spin");
     setError("");
     setRevealed(false);
-    const pending = pendingSpin ?? { id: crypto.randomUUID(), mode };
+    const pending = pendingSpin ?? {
+      id: crypto.randomUUID(),
+      mode,
+      excludedIds,
+    };
     setPendingSpin(pending);
     try {
       const result = await request<SpinResult>("/api/spins", pending);
@@ -436,16 +449,15 @@ export default function Home() {
       setOperation(null);
     }
   }
-  async function sitOutWinner() {
-    if (!winner?.active) return;
-    const next = await mutate(
-      `/api/people/${winner.id}`,
-      { active: false },
-      "PATCH",
-    );
-    if (!next) return;
+  function sitOutWinner() {
+    if (operating.current || !winner?.active || sitOutIds.includes(winner.id))
+      return;
+    const next = [...sitOutIds, winner.id];
+    setSitOutIds(next);
     setWinnerOpen(false);
-    await startSpin(next);
+    setOutcome(null);
+    setRevealed(false);
+    void startSpin(next);
   }
   function finishSpin() {
     if (outcome) apply(outcome.state);
@@ -618,6 +630,7 @@ export default function Home() {
               outcome={outcome}
               onFinish={finishSpin}
               onOpenTeam={() => setDrawer("team")}
+              emptyNote={emptyNote}
             />
             <div
               className={
@@ -667,9 +680,7 @@ export default function Home() {
                   <span className="result-caption">
                     {candidates.length
                       ? `${candidates.length} ${candidates.length === 1 ? "person" : "people"} active.`
-                      : state?.people.length
-                        ? "Resume someone in Team."
-                        : "Add a name to start."}
+                      : emptyNote}
                   </span>
                 </>
               )}
@@ -727,15 +738,13 @@ export default function Home() {
         pick={outcome?.pick}
         person={winner}
         open={winnerOpen}
-        busy={busy}
         canSpin={candidates.length > 0}
         canSpinWithoutWinner={candidates.some(
           (candidate) => candidate.id !== winner?.id,
         )}
-        error={error}
         onClose={() => setWinnerOpen(false)}
         onSpin={() => void startSpin()}
-        onSitOut={() => void sitOutWinner()}
+        onSitOut={sitOutWinner}
         returnFocusRef={candidates.length ? spinButton : teamButton}
       />
       <Modal
@@ -975,7 +984,7 @@ export default function Home() {
             ) : (
               roster.map((person) => (
                 <div
-                  className={`person-row ${person.active ? "" : "person-paused"}`}
+                  className={`person-row ${odds.has(person.id) ? "" : "person-paused"}`}
                   key={person.id}
                 >
                   <div className="person-identity">
@@ -1037,16 +1046,20 @@ export default function Home() {
                         <span className="person-subtitle">
                           {!person.active
                             ? "Paused"
-                            : person.lastPickedAt
-                              ? `Last picked ${new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(new Date(person.lastPickedAt))}`
-                              : "Not picked yet"}
+                            : sitOutIds.includes(person.id)
+                              ? "Sitting out"
+                              : person.lastPickedAt
+                                ? `Last picked ${new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(new Date(person.lastPickedAt))}`
+                                : "Not picked yet"}
                         </span>
                       )}
                     </div>
                   </div>
                   <span className="pick-count">{person.count}</span>
                   <span className="person-odds">
-                    {person.active ? percentage(odds.get(person.id) ?? 0) : "—"}
+                    {odds.has(person.id)
+                      ? percentage(odds.get(person.id) ?? 0)
+                      : "—"}
                   </span>
                   {confirmingDelete === person.id && (
                     <div
@@ -1090,14 +1103,8 @@ export default function Home() {
                       person={person}
                       disabled={busy || Boolean(pendingSpin)}
                       onCancel={() => setEditing(null)}
-                      onSave={async (values) =>
-                        Boolean(
-                          await mutate(
-                            `/api/people/${person.id}`,
-                            values,
-                            "PATCH",
-                          ),
-                        )
+                      onSave={(values) =>
+                        mutate(`/api/people/${person.id}`, values, "PATCH")
                       }
                     />
                   )}

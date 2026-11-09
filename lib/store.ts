@@ -250,6 +250,7 @@ export async function spin(
   db: D1Database,
   id: string,
   mode: Mode,
+  excludedIds: readonly string[] = [],
 ): Promise<SpinResult> {
   for (let attempt = 0; attempt < 8; attempt++) {
     const existing = await db
@@ -273,7 +274,7 @@ export async function spin(
       };
     }
     const state = await getSnapshot(db);
-    const candidates = getCandidates(state.people, mode);
+    const candidates = getCandidates(state.people, mode, excludedIds);
     if (!candidates.length)
       throw new AppError("Add or resume a teammate before spinning.");
     const winner = selectCandidate(candidates, secureFraction());
