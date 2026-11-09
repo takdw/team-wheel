@@ -170,7 +170,7 @@ The interface stays clear and familiar: real buttons, inline forms, a native odd
 - Native web controls, visible keyboard focus, and explicit state text.
 - Saved-result deceleration with an instant reduced-motion alternative.
 
-This record describes the implemented system in `app/globals.css`, `app/page.tsx`, `app/components/person-editor.tsx`, `app/components/avatar.tsx`, `app/components/side-drawer.tsx`, `lib/wheel.ts`, and `lib/motion.ts`. The review captures show explicitly local demo names and counts; they do not establish a default roster. No approved image comp is a design authority for this build.
+This record describes the implemented system in `app/globals.css`, `app/page.tsx`, `app/components/person-editor.tsx`, `app/components/avatar.tsx`, `app/components/modal.tsx`, `lib/wheel.ts`, and `lib/motion.ts`. The review captures show explicitly local demo names and counts; they do not establish a default roster. No approved image comp is a design authority for this build.
 
 ## Colors
 
@@ -327,6 +327,8 @@ Probability becomes a visible piece of the shared table.
 The live SVG has a 520-unit viewBox with probability-proportional sectors. Random gives every active person equal area; Balanced weights each active person by `1 / (1 + picks - minimum active picks)`. The stationary pointer identifies the final slice. Accessible SVG text points users to the roster's numeric odds; the winner is announced through an atomic polite live status region.
 
 Only after the selection is saved does the disc turn through five to seven full revolutions, landing at a separately randomized point inside the selected slice. A tiny divider margin prevents an ambiguous exact-edge finish. The saved angle makes retries land in the same place; old picks retain their original midpoint. Independent cryptographic fractions vary the turns and duration from 5200–6800ms, with `cubic-bezier(.12,.72,.12,1)`. Selection probabilities are unchanged. While a spin is being saved, status says “Saving your selection…”; during rotation it says “Spinning…”. Roster saves and undo disable conflicting controls while retaining the idle spin label and current result. The result and saved snapshot reveal together when motion finishes. Reduced-motion preference applies the final rotation and completion synchronously, without creating a rotation animation. CSS also collapses incidental transition/loader animation durations to 0.01ms.
+
+After the wheel lands, a centered native modal presents the winner’s avatar and name. A brief burst of confetti uses the participant palette and is hidden in reduced motion. Spin again keeps the roster. Sit out & spin again pauses the winner before drawing again, with Sit out alone when nobody else is active. Closing the modal returns focus to the wheel or Team, and the wheel shows the result inline.
 
 ### Loading, empty, error, and history states
 

@@ -38,7 +38,8 @@ import {
 import { animateWheel, spinRotation } from "@/lib/motion";
 import { Avatar } from "./components/avatar";
 import { PersonEditor } from "./components/person-editor";
-import { SideDrawer } from "./components/side-drawer";
+import { Modal } from "./components/modal";
+import { WinnerDialog } from "./components/winner-dialog";
 
 class RequestError extends Error {
   constructor(
@@ -291,6 +292,7 @@ export default function Home() {
   const [copied, setCopied] = useState(false);
   const [outcome, setOutcome] = useState<SpinResult | null>(null);
   const [revealed, setRevealed] = useState(false);
+  const [winnerOpen, setWinnerOpen] = useState(false);
   const [pendingSpin, setPendingSpin] = useState<{
     id: string;
     mode: Mode;
@@ -300,6 +302,7 @@ export default function Home() {
   const nameInput = useRef<HTMLInputElement>(null);
   const teamButton = useRef<HTMLButtonElement>(null);
   const historyButton = useRef<HTMLButtonElement>(null);
+  const spinButton = useRef<HTMLButtonElement>(null);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const apply = useCallback((next: Snapshot) => {
     if (revision.current !== null && next.revision < revision.current) return;
@@ -374,21 +377,22 @@ export default function Home() {
   }
 
   async function mutate(path: string, body: unknown, method = "POST") {
-    if (operating.current) return false;
+    if (operating.current) return null;
     operating.current = true;
     setOperation("save");
     setError("");
     try {
-      apply(await request<Snapshot>(path, body, method));
+      const next = await request<Snapshot>(path, body, method);
+      apply(next);
       setOutcome(null);
       setRevealed(false);
       setLastDeleted(null);
-      return true;
+      return next;
     } catch (issue) {
       setError(
         issue instanceof Error ? issue.message : "Couldn’t save that change.",
       );
-      return false;
+      return null;
     } finally {
       operating.current = false;
       setOperation(null);
@@ -401,9 +405,14 @@ export default function Home() {
       setEditing(null);
     }
   }
-  async function startSpin() {
-    if (operating.current || (!candidates.length && !pendingSpin)) return;
+  async function startSpin(snapshot = state) {
+    if (
+      operating.current ||
+      (!snapshot?.people.some((person) => person.active) && !pendingSpin)
+    )
+      return;
     operating.current = true;
+    setWinnerOpen(false);
     setOperation("spin");
     setError("");
     setRevealed(false);
@@ -427,9 +436,21 @@ export default function Home() {
       setOperation(null);
     }
   }
+  async function sitOutWinner() {
+    if (!winner?.active) return;
+    const next = await mutate(
+      `/api/people/${winner.id}`,
+      { active: false },
+      "PATCH",
+    );
+    if (!next) return;
+    setWinnerOpen(false);
+    await startSpin(next);
+  }
   function finishSpin() {
     if (outcome) apply(outcome.state);
     setRevealed(true);
+    setWinnerOpen(true);
     operating.current = false;
     setOperation(null);
     void refresh();
@@ -555,7 +576,7 @@ export default function Home() {
         <div className="page-heading">
           <h1>Who’s up next?</h1>
         </div>
-        {!drawer && errorNotice}
+        {!drawer && !winnerOpen && errorNotice}
         <div className="workspace">
           <section className="spin-workspace" aria-label="Spin the team wheel">
             <div
@@ -599,7 +620,9 @@ export default function Home() {
               onOpenTeam={() => setDrawer("team")}
             />
             <div
-              className="spin-result"
+              className={
+                winnerOpen ? "spin-result result-obscured" : "spin-result"
+              }
               role="status"
               aria-live="polite"
               aria-atomic="true"
@@ -607,7 +630,7 @@ export default function Home() {
               {spinning && !revealed ? (
                 <>
                   <span className="result-caption">
-                    {outcome ? "Spinning…" : "Saving your selection…"}
+                    {pendingSpin ? "Saving your selection…" : "Spinning…"}
                   </span>
                   <strong>Choosing a teammate</strong>
                 </>
@@ -653,8 +676,9 @@ export default function Home() {
             </div>
             <button
               className="button spin-button"
+              ref={spinButton}
               disabled={busy || !state || (!candidates.length && !pendingSpin)}
-              onClick={startSpin}
+              onClick={() => void startSpin()}
             >
               {spinning ? (
                 <LoaderCircle className="loading-icon" size={20} />
@@ -699,10 +723,25 @@ export default function Home() {
           </section>
         </div>
       </main>
-      <SideDrawer
+      <WinnerDialog
+        pick={outcome?.pick}
+        person={winner}
+        open={winnerOpen}
+        busy={busy}
+        canSpin={candidates.length > 0}
+        canSpinWithoutWinner={candidates.some(
+          (candidate) => candidate.id !== winner?.id,
+        )}
+        error={error}
+        onClose={() => setWinnerOpen(false)}
+        onSpin={() => void startSpin()}
+        onSitOut={() => void sitOutWinner()}
+        returnFocusRef={candidates.length ? spinButton : teamButton}
+      />
+      <Modal
         id="history-drawer"
         labelledBy="history-heading"
-        side="right"
+        className="side-drawer side-drawer-right"
         open={historyOpen}
         onClose={closeHistory}
         returnFocusRef={historyButton}
@@ -839,10 +878,11 @@ export default function Home() {
             </>
           )}
         </section>
-      </SideDrawer>
-      <SideDrawer
+      </Modal>
+      <Modal
         id="team-drawer"
         labelledBy="team-heading"
+        className="side-drawer"
         open={teamOpen}
         onClose={closeTeam}
         returnFocusRef={teamButton}
@@ -1050,8 +1090,14 @@ export default function Home() {
                       person={person}
                       disabled={busy || Boolean(pendingSpin)}
                       onCancel={() => setEditing(null)}
-                      onSave={(values) =>
-                        mutate(`/api/people/${person.id}`, values, "PATCH")
+                      onSave={async (values) =>
+                        Boolean(
+                          await mutate(
+                            `/api/people/${person.id}`,
+                            values,
+                            "PATCH",
+                          ),
+                        )
                       }
                     />
                   )}
@@ -1098,7 +1144,7 @@ export default function Home() {
             {state?.totalPicks ?? 0} picks saved
           </div>
         </aside>
-      </SideDrawer>
+      </Modal>
       {syncError && (
         <footer className="page-footer" role="status">
           <span>

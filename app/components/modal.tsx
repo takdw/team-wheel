@@ -2,10 +2,10 @@
 
 import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 
-export function SideDrawer({
+export function Modal({
   id,
   labelledBy,
-  side = "left",
+  className,
   open,
   onClose,
   returnFocusRef,
@@ -13,7 +13,7 @@ export function SideDrawer({
 }: {
   id: string;
   labelledBy: string;
-  side?: "left" | "right";
+  className: string;
   open: boolean;
   onClose: () => void;
   returnFocusRef: RefObject<HTMLButtonElement | null>;
@@ -31,9 +31,10 @@ export function SideDrawer({
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     if (!element.open) {
+      const focused = document.activeElement;
       opener.current =
-        document.activeElement instanceof HTMLElement
-          ? document.activeElement
+        focused instanceof HTMLElement && focused !== document.body
+          ? focused
           : null;
       element.showModal();
     }
@@ -46,17 +47,16 @@ export function SideDrawer({
     <dialog
       ref={dialog}
       id={id}
-      className="side-drawer"
-      data-side={side}
+      className={className}
       aria-labelledby={labelledBy}
-      onClose={() => {
+      onClose={(event) => {
+        if (event.currentTarget.open) return;
         onClose();
-        // The empty-wheel opener disappears when the first teammate is added.
-        const target =
-          opener.current?.isConnected && !opener.current.matches(":disabled")
-            ? opener.current
-            : returnFocusRef.current;
-        target?.focus();
+        const previous = opener.current;
+        if (previous?.isConnected) previous.focus();
+        // The opener can be removed or disabled while the dialog is open.
+        if (!previous || document.activeElement !== previous)
+          returnFocusRef.current?.focus();
       }}
       onClick={(event) => {
         if (event.target !== event.currentTarget) return;
