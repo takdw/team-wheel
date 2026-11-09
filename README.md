@@ -69,9 +69,9 @@ Photos accept JPG, PNG, and WebP files up to 10 MB. The browser center-crops and
 
 The roster, wheel, winner, and pick history show the current profile photo. Historical names and the colors used for past spins remain recorded in saved selections.
 
-## Team drawer and spinning
+## Drawers and spinning
 
-**Team** in the header opens team management from the left, keeping the main view focused on the wheel. Close the drawer with its close button, Escape, or the backdrop. Keyboard focus stays within the open drawer and returns to the opener on close. Empty or fully paused wheels include an action to open Team.
+**Team** opens roster management from the left. **History** opens saved picks from the right, including Undo and Show older picks. Close either drawer with its close button, Escape, or the backdrop. Keyboard focus returns to the opener on close. Empty or fully paused wheels include an action to open Team. **How the odds work** opens a popover below the spin action.
 
 The pointer sits at **three o'clock**. Each new spin saves a cryptographically random position inside the selected person's slice, so finishes can be near either edge rather than always at the midpoint. Retries return the same saved landing. The animation varies between 5–7 full turns and 5.2–6.8 seconds, with a slow coast; reduced-motion mode shows the final result immediately. These visual choices do not change the random or balanced selection probabilities. Older saved spins without a landing position retain their original centered finish when replayed.
 

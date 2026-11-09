@@ -160,7 +160,7 @@ components:
 
 Team Wheel borrows the warmth of tabletop game pieces and a paper score sheet. A light paper ground, forest-green controls, and distinct participant colors make a shared decision feel friendly and understandable. Rounded Manrope lettering gives headings and compact working labels one consistent voice.
 
-The interface stays clear and familiar: real buttons, inline forms, a native disclosure, and a semantic history table. Character comes from the wheel, participant colors, small orange punctuation, and one deliberate motion: decelerating toward an already saved result. Optional participant photos sit within circular identity marks; the wheel remains live SVG geometry.
+The interface stays clear and familiar: real buttons, inline forms, a native odds popover, and a chronological history list. Character comes from the wheel, participant colors, small orange punctuation, and one deliberate motion: decelerating toward an already saved result. Optional participant photos sit within circular identity marks; the wheel remains live SVG geometry.
 
 **Key Characteristics:**
 
@@ -170,7 +170,7 @@ The interface stays clear and familiar: real buttons, inline forms, a native dis
 - Native web controls, visible keyboard focus, and explicit state text.
 - Saved-result deceleration with an instant reduced-motion alternative.
 
-This record describes the implemented system in `app/globals.css`, `app/page.tsx`, `app/components/person-editor.tsx`, `app/components/avatar.tsx`, `app/components/team-drawer.tsx`, `lib/wheel.ts`, and `lib/motion.ts`. The review captures show explicitly local demo names and counts; they do not establish a default roster. No approved image comp is a design authority for this build.
+This record describes the implemented system in `app/globals.css`, `app/page.tsx`, `app/components/person-editor.tsx`, `app/components/avatar.tsx`, `app/components/side-drawer.tsx`, `lib/wheel.ts`, and `lib/motion.ts`. The review captures show explicitly local demo names and counts; they do not establish a default roster. No approved image comp is a design authority for this build.
 
 ## Colors
 
@@ -218,7 +218,7 @@ The variable font is self-hosted through `@fontsource-variable/manrope`. Rounded
 - **Display:** the frontmatter display role names the page's one main question. It becomes 33px at widths up to 800px, or 34px on desktop viewports no taller than 800px.
 - **Headline:** the larger history heading becomes 21px at widths up to 800px.
 - **Title:** the compact roster heading uses the title role. Headings use balanced text wrapping.
-- **Body:** supporting descriptions and most working controls use 12–13px. Expanded odds help uses 12px with 1.8 line height.
+- **Body:** supporting descriptions and most working controls use 12–13px. The odds popover uses 13px with 1.6 line height.
 - **Label:** compact text actions use the label role. Secondary labels range from 10–12px; the smallest roster metadata becomes 9px on narrow phones. These small metadata sizes describe the current dense rows, not a default for new body copy.
 - **Result:** the selected name uses the result role, wraps anywhere when needed, and has horizontal breathing room. The ready message is a smaller 17px at weight 600.
 - **Brand:** the wordmark uses the brand role, shrinking to 22px on narrow phones.
@@ -230,23 +230,23 @@ The variable font is self-hosted through `@fontsource-variable/manrope`. Rounded
 
 ## Layout
 
-The page centers the wheel, mode controls, result, and spin action in one column, with full-width history below. Team management opens from the header in a left slide-over; it takes no space while closed. The native modal dialog is at most 440px wide, leaves a 20px backdrop strip on phones, and fills the dynamic viewport height. The drawer scrolls independently with a sticky heading and an uncapped roster. Its flat surface uses 24px side padding, reduced to 20px on phones.
+The page centers the wheel, mode controls, result, and spin action in one column. Team opens a left drawer and History opens a right drawer from the header. Each dialog fills the dynamic viewport height, is at most 440px wide, and leaves a 20px backdrop strip on phones. The drawers scroll independently with sticky headings. Their flat surfaces use 24px side padding, reduced to 20px on phones.
 
-The wheel uses `min(available width - 28px, clamp(280px, 100svh - 440px, 560px))`. Short desktops use a 420px cap and `100svh - 380px` so the spin control remains visible. Main content starts after 24px, with an 18px heading-to-workspace gap. The rotating square is clipped with 24px of overflow allowance for its shadow and right-hand pointer, preventing horizontal page overflow at angled finishes.
+The wheel uses `min(available width - 28px, clamp(280px, 100svh - 440px, 560px))`. Short desktops use a 420px cap and `100svh - 400px` to keep the spin control and odds help in view. Main content starts after 24px, with an 18px heading-to-workspace gap. The rotating square is clipped with 24px of overflow allowance for its shadow and right-hand pointer, preventing horizontal page overflow at angled finishes.
 
 | Condition | Actual behavior |
 | --- | --- |
 | At least 1600px wide | Container maximum 1480px with 75px side padding. |
 | At least 1101px wide | Container maximum 1440px with 64px side padding; header 82px high. |
 | At most 1100px wide | Side padding 35px. |
-| At most 800px wide | Side padding 25px; header 77px. Header sync text is hidden, copy action becomes icon-only, and the Team trigger stays visible. |
+| At most 800px wide | Side padding 25px; header 77px. Header sync text is hidden, copy action becomes icon-only, and both drawer triggers stay visible. |
 | At most 440px wide | Side padding 18px; wheel fits available width; spin action up to 290px. |
-| At most 360px wide | Team count hides and brand compacts to preserve header actions. |
+| At most 480px wide | Drawer triggers use text labels, the Team count hides, and the brand compacts. Below 351px the wordmark stands alone. |
 | At least 801px wide and at most 800px high | Header 70px, result reserve 72px, spin action minimum height 46px. |
 
 Working spacing reuses small 4–16px control increments and 20–32px section intervals. One-pixel dividers and aligned columns organize dense roster data. Roster rows are at least 70px. The drawer owns scrolling while open; the page is locked behind it.
 
-History remains a semantic table in a horizontal scrolling container, retaining a 490px minimum width below 441px. Names truncate in roster/history with full names in title attributes; long winner names wrap. Wheel labels truncate to 18 characters, or 11 above 14 candidates; photo-bearing labels use 14. Text is omitted for slices of 2.5% or less, and photos below 5%; Team retains the person and numeric odds. Profile controls and deletion confirmation wrap within the drawer.
+The history list stacks mode and time below each name, with Undo alongside the latest valid pick. Metadata wraps at narrow widths. Names truncate in roster/history with full names in title attributes; long winner names wrap. Wheel labels truncate to 18 characters, or 11 above 14 candidates; photo-bearing labels use 14. Text is omitted for slices of 2.5% or less, and photos below 5%; Team retains the person and numeric odds. Profile controls and deletion confirmation wrap within the drawer.
 
 ## Elevation & Depth
 
@@ -265,7 +265,7 @@ Depth is primarily tonal: paper beneath an off-white roster, fine borders, and q
 
 ## Shapes
 
-The dominant silhouette is a circle: wheel, stationary hub, pointer relationship, brand disc, and participant avatars. SVG wedges are separated by fine pale strokes and an outer ring. The pointer remains fixed at 3 o’clock, pointing left into the rotating disc; the hub remains stationary.
+The dominant silhouette is a circle: wheel, stationary hub, pointer relationship, brand disc, and participant avatars. SVG wedges are separated by fine pale strokes and an outer ring. The pointer remains fixed at 3 o’clock, pointing left into the rotating disc; the plain 44px hub remains stationary.
 
 Supporting controls have modest rounded corners rather than pills: panel, button, field, track, segment, count, and tag radii use the frontmatter roles. A one-pixel line frames the roster and input group. Tiny icon buttons use the smallest radii. Line icons are Lucide SVGs; identity initials are text, not decorative glyph icons.
 
@@ -332,10 +332,10 @@ Only after the selection is saved does the disc turn through five to seven full 
 
 - **Loading:** a labeled spinner occupies the roster with `aria-busy`; history reports that it is loading. Data-dependent controls remain disabled.
 - **Empty:** no default people are supplied. Eight pale placeholder sectors sit behind “Add teammates” and “Enter a name to start.” with the hub hidden. The action opens the drawer. The roster invites the first name and can focus the add field. With no active candidates, spinning is disabled. An all-paused wheel offers Open team to resume someone.
-- **History empty:** a quiet tinted container with a circular history icon prompts a spin to add the first pick. It is a local state, not a modal.
+- **History empty:** a quiet tinted container inside the History drawer prompts a spin to add the first pick.
 - **Error:** a warm error banner above the workspace, or inside the drawer while open, uses `role="alert"`, explanatory text, Refresh, and a named dismiss action. A failed spin may retain its pending identity; “Retry this spin” resumes that same selection. Pending state disables roster and mode changes.
-- **History:** named columns pair participant, mode, time, and the latest valid pick's Undo action. Undone entries remain visible with a grayscale avatar, a struck name, and explicit “Undone” text. Show older picks appends older entries and displays a loading icon during the request.
-- **Odds help:** a native `details`/`summary` disclosure expands the probability explanation in place, with a chevron that reverses when open.
+- **History:** the History drawer lists picks newest first with the participant, mode, time, and the latest valid pick’s Undo action. Undone entries remain visible with a grayscale avatar, a struck name, and explicit “Undone” text. Show older picks appends older entries and displays a loading icon during the request.
+- **Odds help:** a button below Spin opens an anchored native popover. Escape or an outside click dismisses it.
 
 ## Do's and Don'ts
 
@@ -344,10 +344,10 @@ Only after the selection is saved does the disc turn through five to seven full 
 - **Do** use the frontmatter palette and self-hosted Manrope roles for new controls.
 - **Do** share selected participant colors across the wheel and avatars, retaining saved defaults and spin colors.
 - **Do** pair probability slices with numeric odds and explicit mode labels.
-- **Do** keep native buttons, form submission, disclosure behavior, semantic tables, and visible keyboard focus.
+- **Do** keep native buttons, form submission, list semantics, and visible keyboard focus.
 - **Do** save the result before animating and complete immediately when reduced motion is requested.
 - **Do** retain paused and undone entries with explicit text and readable historical context.
-- **Do** allow long names to wrap in results and preserve table readability through local horizontal scrolling.
+- **Do** allow long names to wrap in results and let history metadata wrap in the drawer.
 
 ### Don't:
 

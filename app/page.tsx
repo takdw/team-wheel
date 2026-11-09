@@ -38,7 +38,7 @@ import {
 import { animateWheel, spinRotation } from "@/lib/motion";
 import { Avatar } from "./components/avatar";
 import { PersonEditor } from "./components/person-editor";
-import { TeamDrawer } from "./components/team-drawer";
+import { SideDrawer } from "./components/side-drawer";
 
 class RequestError extends Error {
   constructor(
@@ -251,9 +251,7 @@ function Wheel({
           />
         </svg>
       </div>
-      <div className="wheel-hub" aria-hidden="true">
-        <ArrowUpRight size={30} strokeWidth={1.6} />
-      </div>
+      <div className="wheel-hub" aria-hidden="true" />
       {!candidates.length && (
         <div className="empty-wheel-label">
           <Users size={25} />
@@ -283,7 +281,9 @@ export default function Home() {
   const revision = useRef<number | null>(null);
   const [name, setName] = useState("");
   const [manage, setManage] = useState(false);
-  const [teamOpen, setTeamOpen] = useState(false);
+  const [drawer, setDrawer] = useState<"team" | "history" | null>(null);
+  const teamOpen = drawer === "team";
+  const historyOpen = drawer === "history";
   const [editing, setEditing] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
   const [lastDeleted, setLastDeleted] = useState<Person | null>(null);
@@ -299,6 +299,7 @@ export default function Home() {
   const [loadingHistory, setLoadingHistory] = useState(false);
   const nameInput = useRef<HTMLInputElement>(null);
   const teamButton = useRef<HTMLButtonElement>(null);
+  const historyButton = useRef<HTMLButtonElement>(null);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const apply = useCallback((next: Snapshot) => {
     if (revision.current !== null && next.revision < revision.current) return;
@@ -362,10 +363,14 @@ export default function Home() {
   const topCount = leaders[0]?.count ?? 0;
 
   function closeTeam() {
-    setTeamOpen(false);
+    setDrawer((current) => (current === "team" ? null : current));
     setManage(false);
     setEditing(null);
     setConfirmingDelete(null);
+  }
+
+  function closeHistory() {
+    setDrawer((current) => (current === "history" ? null : current));
   }
 
   async function mutate(path: string, body: unknown, method = "POST") {
@@ -498,14 +503,14 @@ export default function Home() {
             </span>
           </Link>
           <button
-            className="button team-trigger"
+            className="button drawer-trigger team-trigger"
             ref={teamButton}
             aria-label="Open team"
             aria-haspopup="dialog"
             aria-expanded={teamOpen}
             aria-controls="team-drawer"
             disabled={spinning}
-            onClick={() => setTeamOpen(true)}
+            onClick={() => setDrawer("team")}
           >
             <Users size={17} />
             <span>Team</span>
@@ -524,6 +529,19 @@ export default function Home() {
             </span>
           </span>
           <button
+            className="button drawer-trigger"
+            ref={historyButton}
+            aria-label="Open history"
+            aria-haspopup="dialog"
+            aria-expanded={historyOpen}
+            aria-controls="history-drawer"
+            disabled={spinning}
+            onClick={() => setDrawer("history")}
+          >
+            <History size={17} />
+            <span>History</span>
+          </button>
+          <button
             className="button button-secondary share-button"
             aria-label={copied ? "Link copied" : "Copy team link"}
             onClick={copyLink}
@@ -537,7 +555,7 @@ export default function Home() {
         <div className="page-heading">
           <h1>Who’s up next?</h1>
         </div>
-        {!teamOpen && errorNotice}
+        {!drawer && errorNotice}
         <div className="workspace">
           <section className="spin-workspace" aria-label="Spin the team wheel">
             <div
@@ -578,7 +596,7 @@ export default function Home() {
               people={state?.people ?? []}
               outcome={outcome}
               onFinish={finishSpin}
-              onOpenTeam={() => setTeamOpen(true)}
+              onOpenTeam={() => setDrawer("team")}
             />
             <div
               className="spin-result"
@@ -650,31 +668,64 @@ export default function Home() {
                   : "Spin the wheel"}
               <ArrowUpRight size={19} />
             </button>
-            <details className="fairness-help">
-              <summary>
-                <CircleHelp size={14} /> How the odds work{" "}
-                <ChevronDown size={13} />
-              </summary>
+            <button
+              type="button"
+              id="odds-help-trigger"
+              className="fairness-help"
+              popoverTarget="odds-help"
+            >
+              <CircleHelp size={14} /> How the odds work
+            </button>
+            <div
+              id="odds-help"
+              className="fairness-popover"
+              popover="auto"
+              role="region"
+              aria-labelledby="odds-help-trigger"
+            >
               <p>
-                Random gives everyone equal odds on each spin, so repeats can
-                happen. Balanced gives people with fewer picks more weight: 1 ÷
-                (1 + picks − the team’s lowest active count). Both modes use
-                secure randomness. A bigger slice means a bigger chance.
+                <strong>Random</strong> gives everyone equal odds on each spin,
+                so repeats can happen.
               </p>
-            </details>
+              <p>
+                <strong>Balanced</strong> gives people with fewer picks more
+                weight: 1 ÷ (1 + picks − the team’s lowest active count).
+              </p>
+              <p>
+                Both modes use secure randomness. A bigger slice means a bigger
+                chance.
+              </p>
+            </div>
           </section>
         </div>
-        <section className="history-section" aria-labelledby="history-heading">
-          <div className="history-heading">
-            <div>
+      </main>
+      <SideDrawer
+        id="history-drawer"
+        labelledBy="history-heading"
+        side="right"
+        open={historyOpen}
+        onClose={closeHistory}
+        returnFocusRef={historyButton}
+      >
+        <section className="history-panel">
+          <div className="panel-heading">
+            <div className="panel-title">
               <h2 id="history-heading">Pick history</h2>
+              <span className="history-total">
+                {state?.totalPicks ?? 0} valid{" "}
+                {state?.totalPicks === 1 ? "pick" : "picks"}
+              </span>
             </div>
-            <span className="history-total">
-              <History size={15} />
-              {state?.totalPicks ?? 0} valid{" "}
-              {(state?.totalPicks ?? 0) === 1 ? "pick" : "picks"}
-            </span>
+            <button
+              className="icon-button close-drawer"
+              aria-label="Close history"
+              onClick={closeHistory}
+              autoFocus
+            >
+              <X size={20} />
+            </button>
           </div>
+          {historyOpen && errorNotice}
           {leaders.length > 0 && (
             <p className="history-insight">
               {leaders.length === 1 ? (
@@ -710,43 +761,35 @@ export default function Home() {
             </div>
           ) : (
             <>
-              <div className="history-scroll">
-                <table className="history-table">
-                  <thead>
-                    <tr>
-                      <th scope="col">Teammate</th>
-                      <th scope="col">Mode</th>
-                      <th scope="col">Picked at</th>
-                      <th scope="col" aria-label="Actions" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {history.map((pick) => (
-                      <tr
-                        key={pick.id}
-                        className={pick.undoneAt ? "pick-undone" : ""}
-                      >
-                        <td>
-                          <div className="history-person">
-                            <Avatar
-                              id={pick.personId}
-                              name={pick.personName}
-                              color={
-                                peopleById.get(pick.personId)?.color ??
-                                peopleById.get(pick.personId)?.defaultColor
-                              }
-                              photoUrl={peopleById.get(pick.personId)?.photoUrl}
-                              className="history-avatar"
-                            />
-                            <strong title={pick.personName}>
-                              {pick.personName}
-                            </strong>
-                            {pick.undoneAt && (
-                              <span className="undone-label">Undone</span>
-                            )}
-                          </div>
-                        </td>
-                        <td>
+              <ol className="history-list" role="list">
+                {history.map((pick) => {
+                  const person = peopleById.get(pick.personId);
+                  return (
+                    <li
+                      key={pick.id}
+                      className={
+                        pick.undoneAt
+                          ? "history-row pick-undone"
+                          : "history-row"
+                      }
+                    >
+                      <Avatar
+                        id={pick.personId}
+                        name={pick.personName}
+                        color={person?.color ?? person?.defaultColor}
+                        photoUrl={person?.photoUrl}
+                        className="history-avatar"
+                      />
+                      <div className="history-entry">
+                        <div className="history-person">
+                          <strong title={pick.personName}>
+                            {pick.personName}
+                          </strong>
+                          {pick.undoneAt && (
+                            <span className="undone-label">Undone</span>
+                          )}
+                        </div>
+                        <div className="history-meta">
                           <span className={`mode-tag mode-tag-${pick.mode}`}>
                             {pick.mode === "random" ? (
                               <Shuffle size={12} />
@@ -755,34 +798,30 @@ export default function Home() {
                             )}
                             {pick.mode === "random" ? "Random" : "Balanced"}
                           </span>
-                        </td>
-                        <td>
                           <time
                             dateTime={pick.createdAt}
                             title={new Date(pick.createdAt).toLocaleString()}
                           >
                             {dateLabel(pick.createdAt)}
                           </time>
-                        </td>
-                        <td>
-                          {pick.id === latestValid?.id && (
-                            <button
-                              className="text-button undo-button"
-                              disabled={busy || Boolean(pendingSpin)}
-                              onClick={() =>
-                                void mutate("/api/undo", { id: pick.id })
-                              }
-                            >
-                              <RotateCcw size={13} />
-                              Undo
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                        </div>
+                      </div>
+                      {pick.id === latestValid?.id && (
+                        <button
+                          className="text-button undo-button"
+                          disabled={busy || Boolean(pendingSpin)}
+                          onClick={() =>
+                            void mutate("/api/undo", { id: pick.id })
+                          }
+                        >
+                          <RotateCcw size={13} />
+                          Undo
+                        </button>
+                      )}
+                    </li>
+                  );
+                })}
+              </ol>
               {nextCursor && (
                 <button
                   className="button load-more"
@@ -800,8 +839,10 @@ export default function Home() {
             </>
           )}
         </section>
-      </main>
-      <TeamDrawer
+      </SideDrawer>
+      <SideDrawer
+        id="team-drawer"
+        labelledBy="team-heading"
         open={teamOpen}
         onClose={closeTeam}
         returnFocusRef={teamButton}
@@ -827,7 +868,7 @@ export default function Home() {
                 {manage ? "Done" : "Manage"}
               </button>
               <button
-                className="icon-button close-team"
+                className="icon-button close-drawer"
                 aria-label="Close team"
                 onClick={closeTeam}
                 autoFocus
@@ -1057,7 +1098,7 @@ export default function Home() {
             {state?.totalPicks ?? 0} picks saved
           </div>
         </aside>
-      </TeamDrawer>
+      </SideDrawer>
       {syncError && (
         <footer className="page-footer" role="status">
           <span>

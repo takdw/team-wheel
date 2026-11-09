@@ -2,12 +2,18 @@
 
 import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 
-export function TeamDrawer({
+export function SideDrawer({
+  id,
+  labelledBy,
+  side = "left",
   open,
   onClose,
   returnFocusRef,
   children,
 }: {
+  id: string;
+  labelledBy: string;
+  side?: "left" | "right";
   open: boolean;
   onClose: () => void;
   returnFocusRef: RefObject<HTMLButtonElement | null>;
@@ -39,9 +45,10 @@ export function TeamDrawer({
   return (
     <dialog
       ref={dialog}
-      id="team-drawer"
-      className="team-drawer"
-      aria-labelledby="team-heading"
+      id={id}
+      className="side-drawer"
+      data-side={side}
+      aria-labelledby={labelledBy}
       onClose={() => {
         onClose();
         // The empty-wheel opener disappears when the first teammate is added.
