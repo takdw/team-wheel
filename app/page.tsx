@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import {
   getCandidates,
-  palette,
+  legacyPalette,
   personColor,
   textColor,
   secureFraction,
@@ -138,7 +138,7 @@ function Wheel({
   }, [outcome]);
   const entries: Candidate[] = candidates.length
     ? candidates
-    : palette.map((_, index) => ({
+    : legacyPalette.map((_, index) => ({
         id: `empty-${index}`,
         name: "",
         probability: 1 / 8,
@@ -197,7 +197,7 @@ function Wheel({
                 ) : (
                   <path
                     d={`M260 260 L${x1} ${y1} A${radius} ${radius} 0 ${end - start > Math.PI ? 1 : 0} 1 ${x2} ${y2} Z`}
-                    fill={candidates.length ? color : palette[index]}
+                    fill={candidates.length ? color : legacyPalette[index]}
                     stroke="#f7f6f0"
                     strokeWidth="2"
                   />
@@ -605,7 +605,7 @@ export default function Home() {
                       <Avatar
                         id={winner.id}
                         name={winner.name}
-                        color={winner.color}
+                        color={winner.color ?? winner.defaultColor}
                         photoUrl={winner.photoUrl}
                         className="winner-avatar"
                       />
@@ -731,7 +731,10 @@ export default function Home() {
                             <Avatar
                               id={pick.personId}
                               name={pick.personName}
-                              color={peopleById.get(pick.personId)?.color}
+                              color={
+                                peopleById.get(pick.personId)?.color ??
+                                peopleById.get(pick.personId)?.defaultColor
+                              }
                               photoUrl={peopleById.get(pick.personId)?.photoUrl}
                               className="history-avatar"
                             />
@@ -898,7 +901,7 @@ export default function Home() {
                     <Avatar
                       id={person.id}
                       name={person.name}
-                      color={person.color}
+                      color={person.color ?? person.defaultColor}
                       photoUrl={person.photoUrl}
                     />
                     <div className="person-copy">

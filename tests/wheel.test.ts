@@ -15,6 +15,7 @@ const people = (counts: number[]): Person[] =>
     count,
     active: true,
     lastPickedAt: null,
+    defaultColor: "#247b70",
     color: null,
     photoUrl: null,
   }));

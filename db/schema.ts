@@ -18,6 +18,7 @@ export const people = sqliteTable("people", {
   active: integer("active", { mode: "boolean" }).notNull().default(true),
   createdAt: text("created_at").notNull(),
   color: text("color"),
+  defaultColor: text("default_color"),
   photo: text("photo"),
   photoVersion: text("photo_version"),
   deletedAt: text("deleted_at"),

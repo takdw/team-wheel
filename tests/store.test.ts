@@ -221,10 +221,45 @@ test("profile changes persist, version photos, and preserve historical spin colo
     await updatePerson(db, person.id, { color: null, photo: null });
     const reset = (await getSnapshot(db)).people[0];
     assert.equal(reset.color, null);
+    assert.equal(reset.defaultColor, person.defaultColor);
     assert.equal(reset.photoUrl, null);
     const replay = await spin(db, result.pick.id, "random");
     assert.equal(replay.candidates[0].color, "#112233");
     assert.equal(replay.state.totalPicks, 1);
+  } finally {
+    close();
+  }
+});
+
+test("existing teammates receive saved defaults and keep their manual choices", async () => {
+  const { db, close } = database();
+  try {
+    const insert = db.prepare(
+      "INSERT INTO people (id, name, active, created_at, color) VALUES (?, ?, ?, '2026-01-01', ?)",
+    );
+    await db.batch([
+      insert.bind("legacy-1", "One", 1, null),
+      insert.bind("legacy-2", "Two", 1, "#247B70"),
+      insert.bind("legacy-3", "Three", 0, null),
+    ]);
+
+    const { people } = await getSnapshot(db);
+    assert.equal(people[1].color, "#247B70");
+    assert.equal(people[2].active, false);
+    assert.equal(new Set(people.map((person) => person.defaultColor)).size, 3);
+    assert.ok(people.every((person) => person.defaultColor !== "#247b70"));
+
+    const saved = await db
+      .prepare("SELECT default_color FROM people WHERE id = 'legacy-1'")
+      .first<{ default_color: string }>();
+    assert.equal(saved?.default_color, people[0].defaultColor);
+
+    // A manual choice takes precedence if someone claims an existing default.
+    await updatePerson(db, people[1].id, { color: people[0].defaultColor });
+    const updated = (await getSnapshot(db)).people;
+    assert.equal(updated[1].color, people[0].defaultColor);
+    assert.notEqual(updated[0].defaultColor, updated[1].color);
+    assert.equal(updated[2].defaultColor, people[2].defaultColor);
   } finally {
     close();
   }
@@ -312,8 +347,20 @@ test("deleted members free roster capacity and restoring still respects the limi
     const person = (await getSnapshot(db)).people[0];
     await deletePerson(db, person.id);
     await addPerson(db, "Replacement");
-    assert.equal((await getSnapshot(db)).people.length, 100);
+    const full = (await getSnapshot(db)).people;
+    assert.equal(full.length, 100);
+    assert.equal(new Set(full.map((person) => person.defaultColor)).size, 100);
     await assert.rejects(restorePerson(db, person.id), /team is full/);
+    await deletePerson(
+      db,
+      full.find((member) => member.name === "Member 99")!.id,
+    );
+    await restorePerson(db, person.id);
+    const restored = (await getSnapshot(db)).people;
+    assert.equal(
+      new Set(restored.map((person) => person.defaultColor)).size,
+      100,
+    );
   } finally {
     close();
   }

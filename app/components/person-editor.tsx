@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { Check, LoaderCircle, Upload, X } from "lucide-react";
 import { Avatar } from "./avatar";
-import { palette, personColor, type Person } from "@/lib/wheel";
+import { palette, type Person } from "@/lib/wheel";
 import { preparePhoto } from "@/lib/prepare-photo";
 import type { PersonUpdate } from "@/lib/profile";
 
@@ -26,7 +26,7 @@ export function PersonEditor({
   const [error, setError] = useState("");
   const upload = useRef<HTMLInputElement>(null);
   const busy = disabled || preparing;
-  const selectedColor = personColor(person.id, color);
+  const selectedColor = color ?? person.defaultColor;
   return (
     <form
       className="person-editor"
@@ -99,7 +99,7 @@ export function PersonEditor({
         <Avatar
           id={person.id}
           name={name}
-          color={color}
+          color={selectedColor}
           photoUrl={preview}
           className="profile-preview"
         />

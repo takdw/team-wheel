@@ -1,0 +1,1 @@
+ALTER TABLE `people` ADD `default_color` text;

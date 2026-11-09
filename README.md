@@ -63,7 +63,7 @@ After deletion, choose **Undo deletion** in the notice to restore the same membe
 
 ## Colors and profile photos
 
-Open **Team**, then choose **Manage → Edit** beside a teammate to change their name, choose a preset or custom color, and upload a profile photo. Save the changes to share them with the team. **Use default color** restores the automatic color; **Remove** clears the photo and brings back initials.
+Open **Team**, then choose **Manage → Edit** beside a teammate to change their name, choose a preset or custom color, and upload a profile photo. The team saves a different automatic color for each teammate. Manual choices take precedence. **Use default color** restores the teammate’s saved default. **Remove** clears the photo and brings back initials.
 
 Photos accept JPG, PNG, and WebP files up to 10 MB. The browser center-crops and resizes each photo to 128×128 before saving it (maximum 48 KB). The database stores only this compact version. Photos are served through the authenticated app with versioned, private cache headers; roster refreshes contain photo URLs rather than image payloads. No additional storage service is required. Labels adapt to custom colors for contrast.
 

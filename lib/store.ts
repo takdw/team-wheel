@@ -11,10 +11,12 @@ import {
   candidateLandingAngle,
   candidateMidpoint,
   getCandidates,
+  personColor,
   secureFraction,
   selectCandidate,
 } from "./wheel";
 import type { PersonUpdate } from "./profile";
+import { assignDefaultColors } from "./default-colors";
 
 export class AppError extends Error {
   constructor(
@@ -34,6 +36,17 @@ interface PickRow {
   landing_angle: number | null;
   created_at: string;
   undone_at: string | null;
+}
+interface RosterRow {
+  id: string;
+  name: string;
+  active: number;
+  count: number;
+  last_picked_at: string | null;
+  color: string | null;
+  default_color: string | null;
+  photo_version: string | null;
+  deleted_at: string | null;
 }
 function toPick(row: PickRow): Pick {
   return {
@@ -59,9 +72,9 @@ function historyPage(rows: PickRow[]): HistoryPage {
 }
 export async function getSnapshot(db: D1Database): Promise<Snapshot> {
   // D1 batches are transactions, keeping the revision and counts consistent.
-  const [revision, roster, history] = await db.batch([
+  const queries = [
     db.prepare("SELECT revision FROM wheel_state WHERE id = 1"),
-    db.prepare(`SELECT people.id, people.name, people.active, people.color, people.photo_version, people.deleted_at,
+    db.prepare(`SELECT people.id, people.name, people.active, people.color, people.default_color, people.photo_version, people.deleted_at,
       COUNT(picks.sequence) AS count, MAX(picks.created_at) AS last_picked_at
       FROM people LEFT JOIN picks ON people.id = picks.person_id AND picks.undone_at IS NULL
       GROUP BY people.id ORDER BY people.created_at, people.id`),
@@ -70,17 +83,21 @@ export async function getSnapshot(db: D1Database): Promise<Snapshot> {
         `SELECT ${historyColumns} FROM picks ORDER BY sequence DESC LIMIT ?`,
       )
       .bind(pageSize + 1),
-  ]);
-  const allPeople = roster.results as unknown as Array<{
-    id: string;
-    name: string;
-    active: number;
-    count: number;
-    last_picked_at: string | null;
-    color: string | null;
-    photo_version: string | null;
-    deleted_at: string | null;
-  }>;
+  ];
+  let [revision, roster, history] = await db.batch(queries);
+  let allPeople = roster.results as RosterRow[];
+  if (
+    allPeople.some(
+      (person) => person.deleted_at === null && person.default_color === null,
+    )
+  ) {
+    // Existing rosters get their saved defaults on the first load after the schema update.
+    [, revision, roster, history] = await db.batch([
+      assignDefaultColors(db),
+      ...queries,
+    ]);
+    allPeople = roster.results as RosterRow[];
+  }
   const people: Person[] = allPeople
     .filter((person) => person.deleted_at === null)
     .map((person) => ({
@@ -90,6 +107,7 @@ export async function getSnapshot(db: D1Database): Promise<Snapshot> {
       count: person.count,
       lastPickedAt: person.last_picked_at,
       color: person.color,
+      defaultColor: person.default_color ?? personColor(person.id),
       photoUrl: person.photo_version
         ? `/api/people/${person.id}/photo?v=${person.photo_version}`
         : null,
@@ -120,13 +138,15 @@ export async function getHistory(
   return historyPage(result.results);
 }
 export async function addPerson(db: D1Database, name: string): Promise<void> {
-  const result = await db
-    .prepare(
-      `INSERT INTO people (id, name, active, created_at)
+  const [result] = await db.batch([
+    db
+      .prepare(
+        `INSERT INTO people (id, name, active, created_at)
     SELECT ?, ?, 1, ? WHERE (SELECT COUNT(*) FROM people WHERE deleted_at IS NULL) < 100 RETURNING id`,
-    )
-    .bind(crypto.randomUUID(), name, new Date().toISOString())
-    .all();
+      )
+      .bind(crypto.randomUUID(), name, new Date().toISOString()),
+    assignDefaultColors(db),
+  ]);
   if (!result.results.length)
     throw new AppError("This team has reached its limit of 100 people.");
 }
@@ -157,12 +177,14 @@ export async function updatePerson(
     );
   }
   if (!assignments.length) throw new AppError("Choose a change to save.");
-  const result = await db
+  const update = db
     .prepare(
       `UPDATE people SET ${assignments.join(", ")} WHERE id = ? AND deleted_at IS NULL RETURNING id`,
     )
-    .bind(...bindings, id)
-    .all();
+    .bind(...bindings, id);
+  const result = values.color
+    ? (await db.batch([update, assignDefaultColors(db)]))[0]
+    : await update.all();
   if (!result.results.length)
     throw new AppError(
       "That person could not be found. Refresh the team list.",
@@ -190,13 +212,20 @@ export async function restorePerson(db: D1Database, id: string): Promise<void> {
     .first<{ deleted_at: string | null }>();
   if (!person) throw new AppError("That member could not be found.", 404);
   if (person.deleted_at === null) return;
-  const result = await db
-    .prepare(
-      `UPDATE people SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL
-    AND (SELECT COUNT(*) FROM people WHERE deleted_at IS NULL) < 100 RETURNING id`,
-    )
-    .bind(id)
-    .all();
+  const [result] = await db.batch([
+    db
+      .prepare(
+        `UPDATE people SET deleted_at = NULL,
+      default_color = CASE WHEN EXISTS (
+        SELECT 1 FROM people AS teammate
+        WHERE teammate.deleted_at IS NULL AND teammate.default_color = people.default_color
+      ) THEN NULL ELSE default_color END
+      WHERE id = ? AND deleted_at IS NOT NULL
+      AND (SELECT COUNT(*) FROM people WHERE deleted_at IS NULL) < 100 RETURNING id`,
+      )
+      .bind(id),
+    assignDefaultColors(db),
+  ]);
   if (!result.results.length)
     throw new AppError(
       "The team is full. Remove a member before restoring this one.",

@@ -6,6 +6,7 @@ export interface Person {
   count: number;
   lastPickedAt: string | null;
   color: string | null;
+  defaultColor: string;
   photoUrl: string | null;
 }
 export interface Candidate {
@@ -54,7 +55,7 @@ export function getCandidates(people: Person[], mode: Mode): Candidate[] {
     id: person.id,
     name: person.name,
     probability: weights[index] / total,
-    color: personColor(person.id, person.color),
+    color: person.color ?? person.defaultColor,
   }));
 }
 
@@ -83,6 +84,18 @@ export function selectCandidate(
   return candidates[candidates.length - 1];
 }
 export const palette = [
+  "#247b70",
+  "#f4c355",
+  "#5666b8",
+  "#df8398",
+  "#679743",
+  "#814c96",
+  "#67bddc",
+  "#c9683c",
+];
+
+// Keep the pale placeholder wheel and the fallback for old saved spins.
+export const legacyPalette = [
   "#b9cec2",
   "#eac08c",
   "#b7c9e4",
@@ -96,7 +109,7 @@ export function personColor(id: string, color?: string | null): string {
   if (color) return color;
   let hash = 0;
   for (const character of id) hash = (hash * 31 + character.charCodeAt(0)) | 0;
-  return palette[(hash >>> 0) % palette.length];
+  return legacyPalette[(hash >>> 0) % legacyPalette.length];
 }
 export function textColor(background: string): string {
   function luminance(hex: string) {

@@ -158,7 +158,7 @@ components:
 
 **Creative North Star: "The Shared Table"**
 
-Team Wheel borrows the warmth of tabletop game pieces and a paper score sheet. A light paper ground, forest-green controls, and quiet pastel participants make a shared decision feel friendly and understandable. Rounded Manrope lettering gives headings and compact working labels one consistent voice.
+Team Wheel borrows the warmth of tabletop game pieces and a paper score sheet. A light paper ground, forest-green controls, and distinct participant colors make a shared decision feel friendly and understandable. Rounded Manrope lettering gives headings and compact working labels one consistent voice.
 
 The interface stays clear and familiar: real buttons, inline forms, a native disclosure, and a semantic history table. Character comes from the wheel, participant colors, small orange punctuation, and one deliberate motion: decelerating toward an already saved result. Optional participant photos sit within circular identity marks; the wheel remains live SVG geometry.
 
@@ -184,7 +184,7 @@ Warm near-whites support forest green and soft participant colors; color accompa
 
 ### Secondary
 
-- **Participant Sage, Apricot, Blue, Mauve, Yellow, Teal, Coral, and Lavender** are the ordered eight-color default palette and editor presets. A saved custom color overrides the stable ID-derived default; colors can repeat. The current color is shared by the wheel and avatars. Saved spins retain their candidate colors, while history avatars use the current profile color.
+- **Participant colors** start with teal, amber, blue, rose, leaf, plum, sky, and terracotta from the editor presets. Larger teams draw from additional shades. Each teammate has a distinct saved default and a manual choice takes precedence. The pale participant tokens support the empty wheel and legacy fallbacks. The wheel and avatars use the current profile color, while saved spins retain their candidate colors.
 - **Adaptive identity text** uses Ink when its contrast reaches 4.5:1, then Surface, then black or white according to luminance. Apply the same helper to initials and SVG wheel labels when participant colors change.
 - **Orange** is a small punctuation accent in the wordmark and winner.
 
@@ -202,7 +202,7 @@ Warm near-whites support forest green and soft participant colors; color accompa
 
 ### Named Rules
 
-**The Same Person Rule.** Use the saved participant color, falling back to the stable ID palette; a rename must not reset visual identity. Preserve saved spin colors while showing current profiles in history.
+**The Same Person Rule.** Use the manual color or the teammate’s saved default. Preserve that identity through renames and keep saved spin colors when replaying a result.
 
 **The Visible Odds Rule.** Slice area and the numeric next odds describe the same probability; color is never a substitute for either.
 
@@ -342,7 +342,7 @@ Only after the selection is saved does the disc turn through five to seven full 
 ### Do:
 
 - **Do** use the frontmatter palette and self-hosted Manrope roles for new controls.
-- **Do** share selected participant colors across wheel and avatars, retaining ID defaults and saved spin colors.
+- **Do** share selected participant colors across the wheel and avatars, retaining saved defaults and spin colors.
 - **Do** pair probability slices with numeric odds and explicit mode labels.
 - **Do** keep native buttons, form submission, disclosure behavior, semantic tables, and visible keyboard focus.
 - **Do** save the result before animating and complete immediately when reduced motion is requested.
