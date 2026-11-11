@@ -237,16 +237,73 @@ h1 {
   color: var(--muted);
   margin: 13px 0 22px;
 }
-.wheel-rotor {
+.wheel-plane {
+  --rim-step: clamp(4px, 0.65vw, 7px);
+  position: relative;
   width: 100%;
   height: 100%;
+  transform: perspective(1050px) rotateX(28deg);
+  transform-style: preserve-3d;
+}
+.wheel-rim,
+.wheel-rim::before,
+.wheel-rim::after {
+  position: absolute;
+  border-radius: 50%;
+  background: linear-gradient(110deg, #ded0b6, #b4a184 48%, #c7b69b);
+}
+.wheel-rim {
+  inset: 1%;
+  transform: translateZ(calc(-1 * var(--rim-step)));
+  transform-style: preserve-3d;
+}
+.wheel-rim::before,
+.wheel-rim::after {
+  content: "";
+  inset: 0;
+  transform: translateZ(calc(-1 * var(--rim-step)));
+}
+.wheel-rim::after {
+  transform: translateZ(calc(-2 * var(--rim-step)));
+  box-shadow: 0 10px 16px #392a1b30;
+}
+.wheel-rotor {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
   will-change: transform;
 }
 .wheel-rotor svg {
   width: 100%;
   height: 100%;
   display: block;
-  filter: drop-shadow(0 7px 10px #2a402015);
+}
+.wheel-dividers {
+  position: absolute;
+  inset: 0;
+  transform: translateZ(4px);
+  pointer-events: none;
+}
+.wheel-dividers path {
+  fill: none;
+  stroke: #fff4df;
+  stroke-width: 5;
+  stroke-linecap: round;
+  filter: drop-shadow(0 1.5px 1px #52402975);
+}
+.wheel-lip {
+  position: absolute;
+  inset: 1%;
+  border-radius: 50%;
+  border: clamp(4px, 0.52vw, 8px) solid #eedfc4;
+  border-top-color: #f9eed8;
+  border-bottom-color: #e0c9a7;
+  box-shadow:
+    inset 0 1px 2px #ad957a80,
+    0 2px 3px #58412553;
+  transform: translateZ(5px);
+  pointer-events: none;
 }
 .wheel-label {
   font-family: "Manrope Variable", sans-serif;
@@ -256,30 +313,60 @@ h1 {
 }
 .wheel-pointer {
   position: absolute;
-  z-index: 3;
-  width: 25px;
+  width: clamp(25px, 7.5%, 34px);
   top: 50%;
-  right: -10px;
-  transform: translateY(-50%) rotate(90deg);
+  /* The tip meets the outer edge of the SVG slices at x=504 of 520. */
+  left: 96.7%;
+  transform: translateY(-50%) translateZ(6px);
+}
+.wheel-pointer svg {
+  display: block;
+  width: 100%;
   filter: drop-shadow(0 2px 2px #162c201f);
 }
 .wheel-pointer path {
   fill: var(--ink);
   stroke: #fdfbf5;
   stroke-width: 1.5;
+  transform-origin: 81.6% 50%;
+  transform-box: view-box;
+}
+.wheel-pointer circle {
+  fill: #d6bf9d;
 }
 .wheel-hub {
   position: absolute;
-  inset: calc(50% - 22px);
+  top: 50%;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: max(50px, 11%);
+  aspect-ratio: 1;
+  padding: 0;
   border-radius: 50%;
+  background: radial-gradient(circle at 34% 24%, #fffdf6, #eee3ce 70%, #d6c6a9);
+  color: var(--green);
+  box-shadow: 0 4px 8px #392a1b45;
+  transform: translate(-50%, -50%) translateZ(7px);
+}
+.wheel-hub:hover:not(:disabled) {
   background: #fffdf6;
-  box-shadow: 0 3px 12px #253d3320;
-  pointer-events: none;
+  color: var(--green-hover);
+}
+.wheel-hub:active:not(:disabled) {
+  transform: translate(-50%, -50%) translateZ(3px);
+  box-shadow: 0 2px 5px #392a1b45;
+}
+.wheel-hub:disabled {
+  opacity: 1;
+  color: var(--muted);
 }
 .wheel-empty .wheel-rotor {
   opacity: 0.37;
 }
-.wheel-empty .wheel-hub {
+.wheel-empty .wheel-hub,
+.wheel-empty .wheel-rim,
+.wheel-empty .wheel-lip {
   display: none;
 }
 .empty-wheel-label {
@@ -355,21 +442,29 @@ h1 {
   color: #354b37;
   opacity: 1;
 }
-.fairness-help {
+.spin-tools {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 12px;
+}
+.spin-tool {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   min-height: 32px;
-  margin-top: 12px;
   padding: 4px 8px;
   border-radius: 6px;
   background: transparent;
   color: var(--muted);
   font-size: 12px;
+}
+#odds-help-trigger {
   anchor-name: --odds-help;
 }
-.fairness-help:hover {
+.spin-tool:hover {
   background: var(--sage);
   color: var(--ink);
 }
@@ -1174,7 +1269,7 @@ h2 {
   .spin-button {
     min-height: 46px;
   }
-  .fairness-help {
+  .spin-tools {
     margin-top: 10px;
   }
   .roster-list {

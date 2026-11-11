@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import Link from "next/link";
 import {
   ArrowDown,
@@ -23,6 +31,8 @@ import {
   Sparkles,
   Trash2,
   Users,
+  Volume2,
+  VolumeX,
   X,
 } from "lucide-react";
 import {
@@ -41,6 +51,11 @@ import {
   type TurnResult,
 } from "@/lib/wheel";
 import { animateWheel, spinRotation } from "@/lib/motion";
+import {
+  createSpinAudio,
+  playSpinClicks,
+  type SpinAudio,
+} from "@/lib/spin-audio";
 import { Avatar } from "./components/avatar";
 import { PersonEditor } from "./components/person-editor";
 import { PersonModifiers } from "./components/person-modifiers";
@@ -115,20 +130,48 @@ function Wheel({
   candidates,
   people,
   outcome,
+  revealed,
   onFinish,
   onOpenTeam,
   emptyNote,
+  hub,
+  hubIcon,
+  buttonIcon,
+  audio,
 }: {
   candidates: Candidate[];
   people: Person[];
   outcome: SpinResult | null;
+  revealed: boolean;
   onFinish: () => void;
   onOpenTeam: () => void;
   emptyNote: string;
+  hub: ReactNode;
+  hubIcon: RefObject<SVGSVGElement | null>;
+  buttonIcon: RefObject<SVGSVGElement | null>;
+  audio: RefObject<SpinAudio | null>;
 }) {
   const rotor = useRef<HTMLDivElement>(null);
+  const pointer = useRef<SVGPathElement>(null);
   const angle = useRef(0);
   const finish = useRef(onFinish);
+  const slices = useMemo(() => {
+    const entries: Candidate[] = candidates.length
+      ? candidates
+      : legacyPalette.map((_, index) => ({
+          id: `empty-${index}`,
+          name: "",
+          probability: 1 / 8,
+        }));
+    let start = 0;
+    return entries.map((candidate) => {
+      const end = start + candidate.probability * Math.PI * 2;
+      const slice = { candidate, start, end };
+      start = end;
+      return slice;
+    });
+  }, [candidates]);
+  const hasDividers = candidates.length > 1;
   useEffect(() => {
     finish.current = onFinish;
   }, [onFinish]);
@@ -155,130 +198,162 @@ function Wheel({
         finish.current();
       },
       duration,
+      {
+        indicators: [hubIcon.current, buttonIcon.current].filter(
+          (icon) => icon !== null,
+        ),
+        pointer:
+          hasDividers && pointer.current
+            ? {
+                element: pointer.current,
+                dividerAngles: slices.map(
+                  ({ start }) => (start * 180) / Math.PI,
+                ),
+              }
+            : undefined,
+        playClicks: (contacts, wheel) => {
+          if (audio.current)
+            return playSpinClicks(audio.current, contacts, wheel);
+        },
+      },
     );
-  }, [outcome]);
+  }, [outcome, hubIcon, buttonIcon, audio, hasDividers, slices]);
   useEffect(() => {
     if (!outcome && rotor.current) {
       angle.current = 0;
       rotor.current.style.transform = "rotate(0deg)";
     }
   }, [outcome]);
-  const entries: Candidate[] = candidates.length
-    ? candidates
-    : legacyPalette.map((_, index) => ({
-        id: `empty-${index}`,
-        name: "",
-        probability: 1 / 8,
-      }));
   const portraits = new Map(
     people.map((person) => [person.id, person.photoUrl]),
   );
-  const slices: { candidate: Candidate; start: number; end: number }[] = [];
-  for (const candidate of entries) {
-    const start = slices.at(-1)?.end ?? 0;
-    slices.push({
-      candidate,
-      start,
-      end: start + candidate.probability * Math.PI * 2,
-    });
-  }
+  const labelRotation =
+    outcome && revealed ? spinRotation(0, outcome.landingAngle, 0) : 0;
+  const dividers = hasDividers
+    ? slices
+        .map(({ start }) => {
+          const x = Math.sin(start);
+          const y = -Math.cos(start);
+          return `M${260 + 36 * x} ${260 + 36 * y} L${260 + 246 * x} ${260 + 246 * y}`;
+        })
+        .join(" ")
+    : "";
   return (
     <div className={`wheel-wrap ${candidates.length ? "" : "wheel-empty"}`}>
-      <div className="wheel-pointer" aria-hidden="true">
-        <svg viewBox="0 0 30 38">
-          <path d="M3 4 Q15 -2 27 4 L18 32 Q15 38 12 32 Z" />
-        </svg>
+      <div className="wheel-plane">
+        <div className="wheel-rim" aria-hidden="true" />
+        <div className="wheel-rotor" ref={rotor}>
+          <svg
+            viewBox="0 0 520 520"
+            role="img"
+            aria-label={
+              candidates.length
+                ? `Wheel with ${candidates.length} ${candidates.length === 1 ? "person" : "people"}. Individual odds are shown in Team.`
+                : emptyNote
+            }
+          >
+            <circle cx="260" cy="260" r="255" fill="#eee5d4" />
+            {slices.map(({ candidate, start, end }, index) => {
+              const mid = (start + end) / 2;
+              const radius = 244;
+              const x1 = 260 + radius * Math.sin(start),
+                y1 = 260 - radius * Math.cos(start);
+              const x2 = 260 + radius * Math.sin(end),
+                y2 = 260 - radius * Math.cos(end);
+              const degrees = (mid * 180) / Math.PI - 90;
+              // Flip the text if its baseline points left after the wheel stops.
+              const flipLabel =
+                Math.cos(((degrees + labelRotation) * Math.PI) / 180) < 0;
+              const color = personColor(candidate.id, candidate.color);
+              const photoUrl = portraits.get(candidate.id);
+              const showPhoto = photoUrl && candidate.probability >= 0.05;
+              const labelRadius = showPhoto ? 176 : 213;
+              const labelLimit = showPhoto ? 14 : slices.length > 14 ? 11 : 18;
+              const visibleName =
+                Array.from(candidate.name).slice(0, labelLimit).join("") +
+                (Array.from(candidate.name).length > labelLimit ? "…" : "");
+              return (
+                <g key={candidate.id}>
+                  {candidate.probability > 0.9999 ? (
+                    <circle cx="260" cy="260" r={radius} fill={color} />
+                  ) : (
+                    <path
+                      d={`M260 260 L${x1} ${y1} A${radius} ${radius} 0 ${end - start > Math.PI ? 1 : 0} 1 ${x2} ${y2} Z`}
+                      fill={candidates.length ? color : legacyPalette[index]}
+                      stroke="#f7f6f0"
+                      strokeWidth="2"
+                    />
+                  )}
+                  {candidate.name && candidate.probability > 0.025 && (
+                    <g transform={`translate(260 260) rotate(${degrees})`}>
+                      {showPhoto && (
+                        <>
+                          <defs>
+                            <clipPath
+                              id={`photo-${candidate.id}`}
+                              clipPathUnits="userSpaceOnUse"
+                            >
+                              <circle cx="208" cy="0" r="21" />
+                            </clipPath>
+                          </defs>
+                          <circle cx="208" cy="0" r="23" fill="#fffefa" />
+                          <image
+                            href={photoUrl}
+                            x="187"
+                            y="-21"
+                            width="42"
+                            height="42"
+                            preserveAspectRatio="xMidYMid slice"
+                            clipPath={`url(#photo-${candidate.id})`}
+                          />
+                        </>
+                      )}
+                      <text
+                        x={flipLabel ? -labelRadius : labelRadius}
+                        y="6"
+                        textAnchor={flipLabel ? "start" : "end"}
+                        transform={flipLabel ? "rotate(180)" : undefined}
+                        className="wheel-label"
+                        style={{ fill: textColor(color) }}
+                      >
+                        {visibleName}
+                      </text>
+                    </g>
+                  )}
+                </g>
+              );
+            })}
+            <circle
+              cx="260"
+              cy="260"
+              r="246"
+              fill="none"
+              stroke="#fffcf5"
+              strokeWidth="5"
+            />
+          </svg>
+          {dividers && (
+            <svg
+              className="wheel-dividers"
+              viewBox="0 0 520 520"
+              aria-hidden="true"
+            >
+              <path d={dividers} />
+            </svg>
+          )}
+        </div>
+        <div className="wheel-lip" aria-hidden="true" />
+        <div className="wheel-pointer" aria-hidden="true">
+          <svg viewBox="-1 0 38 30">
+            <path
+              ref={pointer}
+              d="M32 3 Q37 15 32 27 L4 18 Q0 16.5 0 15 Q0 13.5 4 12 Z"
+            />
+            <circle cx="30" cy="15" r="2.1" />
+          </svg>
+        </div>
+        {hub}
       </div>
-      <div className="wheel-rotor" ref={rotor}>
-        <svg
-          viewBox="0 0 520 520"
-          role="img"
-          aria-label={
-            candidates.length
-              ? `Wheel with ${candidates.length} ${candidates.length === 1 ? "person" : "people"}. Individual odds are shown in Team.`
-              : emptyNote
-          }
-        >
-          <circle cx="260" cy="260" r="255" fill="#f4f2ec" />
-          {slices.map(({ candidate, start, end }, index) => {
-            const mid = (start + end) / 2;
-            const radius = 244;
-            const x1 = 260 + radius * Math.sin(start),
-              y1 = 260 - radius * Math.cos(start);
-            const x2 = 260 + radius * Math.sin(end),
-              y2 = 260 - radius * Math.cos(end);
-            const degrees = (mid * 180) / Math.PI - 90;
-            const left = Math.sin(mid) < 0;
-            const color = personColor(candidate.id, candidate.color);
-            const photoUrl = portraits.get(candidate.id);
-            const showPhoto = photoUrl && candidate.probability >= 0.05;
-            const labelRadius = showPhoto ? 176 : 213;
-            const labelLimit = showPhoto ? 14 : entries.length > 14 ? 11 : 18;
-            const visibleName =
-              Array.from(candidate.name).slice(0, labelLimit).join("") +
-              (Array.from(candidate.name).length > labelLimit ? "…" : "");
-            return (
-              <g key={candidate.id}>
-                {candidate.probability > 0.9999 ? (
-                  <circle cx="260" cy="260" r={radius} fill={color} />
-                ) : (
-                  <path
-                    d={`M260 260 L${x1} ${y1} A${radius} ${radius} 0 ${end - start > Math.PI ? 1 : 0} 1 ${x2} ${y2} Z`}
-                    fill={candidates.length ? color : legacyPalette[index]}
-                    stroke="#f7f6f0"
-                    strokeWidth="2"
-                  />
-                )}
-                {candidate.name && candidate.probability > 0.025 && (
-                  <g transform={`translate(260 260) rotate(${degrees})`}>
-                    {showPhoto && (
-                      <>
-                        <defs>
-                          <clipPath
-                            id={`photo-${candidate.id}`}
-                            clipPathUnits="userSpaceOnUse"
-                          >
-                            <circle cx="208" cy="0" r="21" />
-                          </clipPath>
-                        </defs>
-                        <circle cx="208" cy="0" r="23" fill="#fffefa" />
-                        <image
-                          href={photoUrl}
-                          x="187"
-                          y="-21"
-                          width="42"
-                          height="42"
-                          preserveAspectRatio="xMidYMid slice"
-                          clipPath={`url(#photo-${candidate.id})`}
-                        />
-                      </>
-                    )}
-                    <text
-                      x={left ? -labelRadius : labelRadius}
-                      y="6"
-                      textAnchor={left ? "start" : "end"}
-                      transform={left ? "rotate(180)" : undefined}
-                      className="wheel-label"
-                      style={{ fill: textColor(color) }}
-                    >
-                      {visibleName}
-                    </text>
-                  </g>
-                )}
-              </g>
-            );
-          })}
-          <circle
-            cx="260"
-            cy="260"
-            r="246"
-            fill="none"
-            stroke="#fffcf5"
-            strokeWidth="5"
-          />
-        </svg>
-      </div>
-      <div className="wheel-hub" aria-hidden="true" />
       {!candidates.length && (
         <div className="empty-wheel-label">
           <Users size={25} />
@@ -312,6 +387,7 @@ export default function Home() {
   const [lastDeleted, setLastDeleted] = useState<Person | null>(null);
   const [sortByPicks, setSortByPicks] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [soundOn, setSoundOn] = useState(true);
   const [outcome, setOutcome] = useState<SpinResult | TurnResult | null>(null);
   const [revealed, setRevealed] = useState(false);
   const [winnerOpen, setWinnerOpen] = useState(false);
@@ -327,8 +403,19 @@ export default function Home() {
   const teamButton = useRef<HTMLButtonElement>(null);
   const historyButton = useRef<HTMLButtonElement>(null);
   const spinButton = useRef<HTMLButtonElement>(null);
+  const hubIcon = useRef<SVGSVGElement>(null);
+  const buttonIcon = useRef<SVGSVGElement>(null);
+  const audio = useRef<SpinAudio | null>(null);
   const volunteerRequests = useRef(new Map<string, string>());
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      const player = audio.current;
+      audio.current = null;
+      if (player) void player.context.close().catch(() => {});
+    },
+    [],
+  );
   const apply = useCallback((next: Snapshot) => {
     if (revision.current !== null && next.revision < revision.current) return;
     if (revision.current !== next.revision) setOlder(null);
@@ -373,6 +460,15 @@ export default function Home() {
   );
   const spinOutcome = outcome && "candidates" in outcome ? outcome : null;
   const shownCandidates = spinOutcome?.candidates ?? candidates;
+  const spinDisabled = busy || !state || (!candidates.length && !pendingSpin);
+  const spinLabel = spinning
+    ? "Spinning…"
+    : pendingSpin
+      ? "Retry this spin"
+      : "Spin the wheel";
+  const SpinIcon = spinning ? LoaderCircle : Shuffle;
+  const SoundIcon = soundOn ? Volume2 : VolumeX;
+  const spinWheel = () => void startSpin();
   const odds = new Map(
     candidates.map((candidate) => [candidate.id, candidate.probability]),
   );
@@ -452,6 +548,16 @@ export default function Home() {
       .map((person) => person.id);
     if (!pendingSpin && !getCandidates(people, mode, excludedIds).length)
       return;
+    try {
+      // Unlock audio from the Spin gesture before waiting on the saved result.
+      const player = (audio.current ??= createSpinAudio());
+      player.volume.gain.value = soundOn ? 1 : 0;
+      if (player.context.state !== "running") {
+        void player.context.resume().catch(() => {});
+      }
+    } catch {
+      // The wheel can still spin if audio is unavailable.
+    }
     operating.current = true;
     setWinnerOpen(false);
     setOperation("spin");
@@ -480,6 +586,11 @@ export default function Home() {
       operating.current = false;
       setOperation(null);
     }
+  }
+  function toggleSound() {
+    const enabled = !soundOn;
+    setSoundOn(enabled);
+    if (audio.current) audio.current.volume.gain.value = enabled ? 1 : 0;
   }
   async function goFirst(person: Person) {
     if (operating.current || pendingSpin) return;
@@ -683,9 +794,25 @@ export default function Home() {
               candidates={shownCandidates}
               people={state?.people ?? []}
               outcome={spinOutcome}
+              revealed={revealed || Boolean(pendingSpin)}
               onFinish={finishSpin}
               onOpenTeam={() => setDrawer("team")}
               emptyNote={emptyNote}
+              hubIcon={hubIcon}
+              buttonIcon={buttonIcon}
+              audio={audio}
+              hub={
+                <button
+                  type="button"
+                  className="wheel-hub"
+                  aria-label={spinLabel}
+                  title={spinLabel}
+                  disabled={spinDisabled}
+                  onClick={spinWheel}
+                >
+                  <SpinIcon ref={hubIcon} size={20} aria-hidden />
+                </button>
+              }
             />
             <div
               className={
@@ -743,29 +870,33 @@ export default function Home() {
             <button
               className="button spin-button"
               ref={spinButton}
-              disabled={busy || !state || (!candidates.length && !pendingSpin)}
-              onClick={() => void startSpin()}
+              disabled={spinDisabled}
+              onClick={spinWheel}
             >
-              {spinning ? (
-                <LoaderCircle className="loading-icon" size={20} />
-              ) : (
-                <Shuffle size={20} />
-              )}
-              {spinning
-                ? "Spinning…"
-                : pendingSpin
-                  ? "Retry this spin"
-                  : "Spin the wheel"}
+              <SpinIcon ref={buttonIcon} size={20} aria-hidden />
+              {spinLabel}
               <ArrowUpRight size={19} />
             </button>
-            <button
-              type="button"
-              id="odds-help-trigger"
-              className="fairness-help"
-              popoverTarget="odds-help"
-            >
-              <CircleHelp size={14} /> How the odds work
-            </button>
+            <div className="spin-tools">
+              <button
+                type="button"
+                id="odds-help-trigger"
+                className="spin-tool"
+                popoverTarget="odds-help"
+              >
+                <CircleHelp size={14} /> How the odds work
+              </button>
+              <button
+                type="button"
+                className="spin-tool"
+                aria-label="Wheel sound"
+                aria-pressed={soundOn}
+                onClick={toggleSound}
+              >
+                <SoundIcon size={15} aria-hidden />
+                {soundOn ? "Sound on" : "Sound off"}
+              </button>
+            </div>
             <div
               id="odds-help"
               className="fairness-popover"
@@ -800,7 +931,7 @@ export default function Home() {
           (candidate) => candidate.id !== winner?.id,
         )}
         onClose={() => setWinnerOpen(false)}
-        onSpin={() => void startSpin()}
+        onSpin={spinWheel}
         onSitOut={sitOutWinner}
         returnFocusRef={candidates.length ? spinButton : teamButton}
       />
