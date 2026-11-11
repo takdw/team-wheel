@@ -15,7 +15,8 @@ Tamrat and teammates choosing who goes next during team meetings. Teammates open
 A simple spinning wheel with random and balanced modes, per-person counters, and durable shared pick history. Show selection odds so the team can understand the result.
 
 ## Confirmed Scope
-- One shared team roster and saved history.
+- Separate shared rosters and saved history for each team.
+- Create a team without an account and join through an eight-character code or invite link.
 - Random mode gives each active person equal probability on every spin.
 - Balanced mode uses weight 1 / (1 + picks - minimum active picks).
 - All valid picks in both modes contribute to counters.
@@ -35,4 +36,4 @@ A simple spinning wheel with random and balanced modes, per-person counters, and
 Create the standalone project in /Users/tamrat/code/team-wheel, outside all Kadonation repositories. Prefer a free hosting platform with a lightweight hosted database and clear deployment instructions. Keep implementation and ongoing operation simple.
 
 ## Assumptions
-Team Wheel is a working name. The initial roster is empty; teammates add their own names. The hosted preview uses Sites access controls. Independent Cloudflare hosting uses a shared password. New participants start at zero picks. History is shared per deployment rather than belonging to individual signed-in users.
+Team Wheel is a working name. New teams start with an empty roster. Independent Cloudflare hosting uses invite codes and browser sessions. The existing Sites wheel uses Sites access controls. New participants start at zero picks, and everyone who joins a team sees its shared history.

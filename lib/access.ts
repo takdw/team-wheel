@@ -1,3 +1,10 @@
+export function usesLegacyTeam(env: {
+  ACCESS_MODE?: string;
+  TEAM_PASSWORD?: string;
+}) {
+  return env.ACCESS_MODE === "sites" || Boolean(env.TEAM_PASSWORD);
+}
+
 export async function checkAccess(
   request: Request,
   env: { TEAM_PASSWORD?: string; ACCESS_MODE?: string },

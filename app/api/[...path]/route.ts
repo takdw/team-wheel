@@ -15,6 +15,16 @@ import {
 } from "@/lib/store";
 import { decodePhoto, personUpdateSchema } from "@/lib/profile";
 import { spinModes } from "@/lib/wheel";
+import { usesLegacyTeam } from "@/lib/access";
+import { legacyTeamId, parseTeamId, teamCodeAlphabet } from "@/lib/team";
+import {
+  createTeam,
+  getTeamAccess,
+  joinTeam,
+  limitTeamAccess,
+  rotateTeamCode,
+  teamSessionCookie,
+} from "@/lib/team-store";
 
 export const dynamic = "force-dynamic";
 const name = z
@@ -23,6 +33,18 @@ const name = z
   .min(1, "Enter a name.")
   .max(60, "Keep names to 60 characters.");
 const uuid = z.string().uuid();
+const teamCode = z
+  .string()
+  .max(24)
+  .transform((value) => value.toUpperCase().replace(/[\s-]/g, ""))
+  .pipe(
+    z
+      .string()
+      .regex(
+        new RegExp(`^[${teamCodeAlphabet}]{8}$`),
+        "Enter the eight-character team code.",
+      ),
+  );
 async function readBody(request: Request): Promise<unknown> {
   const origin = request.headers.get("Origin");
   if (
@@ -46,53 +68,115 @@ async function readBody(request: Request): Promise<unknown> {
 }
 async function handle(request: Request): Promise<Response> {
   try {
-    if (!env.DB)
+    const db = env.DB;
+    if (!db)
       throw new AppError(
         "The team database is not connected. Check the deployment setup.",
         503,
       );
-    const path = new URL(request.url).pathname.replace(/\/$/, "");
+    const url = new URL(request.url);
+    const pathname = url.pathname.replace(/\/$/, "");
     const method = request.method;
     const headers = { "Cache-Control": "no-store" };
-    if (method === "GET" && /^\/api\/people\/[^/]+\/photo$/.test(path)) {
-      const id = uuid.parse(path.split("/")[3]);
-      const version = uuid.parse(new URL(request.url).searchParams.get("v"));
-      const photo = decodePhoto(await getPersonPhoto(env.DB, id, version));
+    const legacy = usesLegacyTeam(env);
+    const cookies = request.headers.get("Cookie");
+    if (
+      !legacy &&
+      method === "POST" &&
+      (pathname === "/api/teams" || pathname === "/api/teams/join")
+    ) {
+      const body = await readBody(request);
+      const action = pathname === "/api/teams" ? "create" : "join";
+      await limitTeamAccess(
+        db,
+        action,
+        request.headers.get("CF-Connecting-IP") ?? "local",
+      );
+      const { teamId, token } =
+        action === "create"
+          ? await createTeam(db, z.object({ name }).parse(body).name)
+          : await joinTeam(
+              db,
+              z.object({ code: teamCode }).parse(body).code,
+              cookies,
+            );
+      const sessionHeaders = new Headers(headers);
+      if (token)
+        sessionHeaders.set(
+          "Set-Cookie",
+          teamSessionCookie(teamId, token, url.protocol === "https:"),
+        );
+      return Response.json({ teamId }, { headers: sessionHeaders });
+    }
+
+    const scoped = /^\/api\/teams\/([^/]+)(\/.*)$/.exec(pathname);
+    const teamId =
+      legacy && !scoped
+        ? legacyTeamId
+        : !legacy && scoped
+          ? parseTeamId(scoped[1])
+          : null;
+    if (teamId === null)
+      throw new AppError("That action could not be found.", 404);
+    const access = legacy ? null : await getTeamAccess(db, teamId, cookies);
+    if (!legacy && !access)
+      throw new AppError("Join this team to open its wheel.", 401);
+    const path = scoped ? scoped[2] : pathname.slice("/api".length);
+
+    if (path === "/invite" && (method === "GET" || method === "POST")) {
+      if (!access?.joinCode)
+        throw new AppError(
+          "Only the team owner can manage the join code.",
+          403,
+        );
+      if (method === "GET")
+        return Response.json({ code: access.joinCode }, { headers });
+      await readBody(request);
+      return Response.json(
+        { code: await rotateTeamCode(db, teamId) },
+        { headers },
+      );
+    }
+    if (method === "GET" && /^\/people\/[^/]+\/photo$/.test(path)) {
+      const id = uuid.parse(path.split("/")[2]);
+      const version = uuid.parse(url.searchParams.get("v"));
+      const photo = decodePhoto(await getPersonPhoto(db, id, version, teamId));
       if (!photo) throw new AppError("Photo could not be read.", 404);
       return new Response(photo.bytes.buffer, {
         headers: {
           "Content-Type": photo.contentType,
-          "Cache-Control": "private, max-age=31536000, immutable",
+          "Cache-Control": legacy
+            ? "private, max-age=31536000, immutable"
+            : "private, no-cache",
           "X-Content-Type-Options": "nosniff",
         },
       });
     }
-    if (method === "GET" && path === "/api/state")
-      return Response.json(await getSnapshot(env.DB), { headers });
-    if (method === "GET" && path === "/api/history") {
+    if (method === "GET" && path === "/state")
+      return Response.json(await getSnapshot(db, teamId), { headers });
+    if (method === "GET" && path === "/history") {
       const before = z.coerce
         .number()
         .int()
         .positive()
-        .safeParse(new URL(request.url).searchParams.get("before"));
+        .safeParse(url.searchParams.get("before"));
       if (!before.success) throw new AppError("Choose a valid history page.");
-      return Response.json(await getHistory(env.DB, before.data), { headers });
+      return Response.json(await getHistory(db, before.data, teamId), {
+        headers,
+      });
     }
     const body = await readBody(request);
-    if (method === "POST" && path === "/api/people") {
-      await addPerson(env.DB, z.object({ name }).parse(body).name);
-    } else if (method === "PATCH" && /^\/api\/people\/[^/]+$/.test(path)) {
+    if (method === "POST" && path === "/people") {
+      await addPerson(db, z.object({ name }).parse(body).name, teamId);
+    } else if (method === "PATCH" && /^\/people\/[^/]+$/.test(path)) {
       const id = uuid.parse(path.split("/").at(-1));
       const values = personUpdateSchema.parse(body);
-      await updatePerson(env.DB, id, values);
-    } else if (method === "DELETE" && /^\/api\/people\/[^/]+$/.test(path)) {
-      await deletePerson(env.DB, uuid.parse(path.split("/").at(-1)));
-    } else if (
-      method === "POST" &&
-      /^\/api\/people\/[^/]+\/restore$/.test(path)
-    ) {
-      await restorePerson(env.DB, uuid.parse(path.split("/")[3]));
-    } else if (method === "POST" && path === "/api/spins") {
+      await updatePerson(db, id, values, teamId);
+    } else if (method === "DELETE" && /^\/people\/[^/]+$/.test(path)) {
+      await deletePerson(db, uuid.parse(path.split("/").at(-1)), teamId);
+    } else if (method === "POST" && /^\/people\/[^/]+\/restore$/.test(path)) {
+      await restorePerson(db, uuid.parse(path.split("/")[2]), teamId);
+    } else if (method === "POST" && path === "/spins") {
       const values = z
         .object({
           id: uuid,
@@ -101,19 +185,19 @@ async function handle(request: Request): Promise<Response> {
         })
         .parse(body);
       return Response.json(
-        await spin(env.DB, values.id, values.mode, values.excludedIds),
+        await spin(db, values.id, values.mode, values.excludedIds, teamId),
         { headers },
       );
-    } else if (method === "POST" && path === "/api/volunteers") {
+    } else if (method === "POST" && path === "/volunteers") {
       const values = z.object({ id: uuid, personId: uuid }).parse(body);
       return Response.json(
-        await volunteer(env.DB, values.id, values.personId),
+        await volunteer(db, values.id, values.personId, teamId),
         { headers },
       );
-    } else if (method === "POST" && path === "/api/undo") {
-      await undoPick(env.DB, z.object({ id: uuid }).parse(body).id);
+    } else if (method === "POST" && path === "/undo") {
+      await undoPick(db, z.object({ id: uuid }).parse(body).id, teamId);
     } else throw new AppError("That action could not be found.", 404);
-    return Response.json(await getSnapshot(env.DB), { headers });
+    return Response.json(await getSnapshot(db, teamId), { headers });
   } catch (error) {
     if (error instanceof z.ZodError)
       return Response.json(

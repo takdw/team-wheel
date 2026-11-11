@@ -11,7 +11,7 @@ const extendedPalette = Array.from({ length: 216 }, (_, index) => {
 });
 const colors = JSON.stringify([...new Set([...palette, ...extendedPalette])]);
 
-export function assignDefaultColors(db: D1Database) {
+export function assignDefaultColors(db: D1Database, teamId: number) {
   // Match people to free colors in one write so simultaneous adds cannot claim the same color.
   return db
     .prepare(
@@ -19,10 +19,10 @@ export function assignDefaultColors(db: D1Database) {
     WITH unassigned AS MATERIALIZED (
       SELECT person.id, ROW_NUMBER() OVER (ORDER BY person.created_at, person.id) AS position
       FROM people AS person
-      WHERE person.deleted_at IS NULL AND (
+      WHERE person.team_id = ? AND person.deleted_at IS NULL AND (
         person.default_color IS NULL OR EXISTS (
           SELECT 1 FROM people AS other
-          WHERE other.deleted_at IS NULL AND other.id != person.id
+          WHERE other.team_id = person.team_id AND other.deleted_at IS NULL AND other.id != person.id
             AND LOWER(other.color) = person.default_color
         )
       )
@@ -31,7 +31,8 @@ export function assignDefaultColors(db: D1Database) {
       FROM json_each(?) AS swatch
       WHERE EXISTS (SELECT 1 FROM unassigned) AND NOT EXISTS (
         SELECT 1 FROM people
-        WHERE deleted_at IS NULL AND (default_color = swatch.value OR LOWER(color) = swatch.value)
+        WHERE team_id = ? AND deleted_at IS NULL
+          AND (default_color = swatch.value OR LOWER(color) = swatch.value)
       )
     )
     UPDATE people SET default_color = available.color
@@ -39,5 +40,5 @@ export function assignDefaultColors(db: D1Database) {
     WHERE people.id = unassigned.id
   `,
     )
-    .bind(colors);
+    .bind(teamId, colors, teamId);
 }

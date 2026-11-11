@@ -13,7 +13,7 @@ npm run db:migrate:local
 npm run dev
 ```
 
-Open the Local URL printed by the server (normally http://localhost:5173). If that port is busy, run `npm run dev -- --port 5187`. Add your team's names in the interface. The local roster starts empty and persists in `.wrangler/state/`. Production has its own separate database.
+Open the Local URL printed by the server (normally http://localhost:5173). If that port is busy, run `npm run dev -- --port 5187`. Create a team, add teammates, and use **Invite** to share its code or link. An invite link fills in the join code. Team data persists in `.wrangler/state/`. Production has its own separate database.
 
 After changing the schema, use `npm run db:generate`, inspect the generated SQL, rebuild, and run `npm run db:migrate:local`. Applied migrations are immutable.
 
@@ -36,12 +36,11 @@ Copy the returned database UUID, then:
 ```sh
 export CLOUDFLARE_D1_DATABASE_ID='YOUR_DATABASE_UUID'
 npm run deploy
-npx wrangler secret put TEAM_PASSWORD --config dist/server/wrangler.cloudflare.json
 ```
 
-The last command prompts privately for a strong shared passphrase. The app refuses access until this secret is set. Share the resulting `https://team-wheel.<your-subdomain>.workers.dev` address and passphrase with the team. The browser's sign-in prompt uses username **team**. No individual accounts or email service are required.
+Open the resulting `https://team-wheel.<your-subdomain>.workers.dev` address to create a team. Share the team's invite link or eight-character code. Each team has its own roster, photos, and history. **Your teams** lists teams with an active session in the current browser. Sessions last 90 days. The browser that created the team can copy the invite and change the code. Changing the code invalidates old invites and keeps existing sessions active.
 
-`npm run deploy` builds, applies pending remote D1 migrations, and publishes the Worker. Subsequent deployments use the same command and retain the database and existing secret. Set `CLOUDFLARE_WORKER_NAME` if the default Worker name `team-wheel` is already used. Keep a record of your database UUID; it is an identifier, not a password. You can put it in your shell profile or CI configuration. For CI, use Cloudflare's `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` environment variables as well.
+`npm run deploy` builds, applies pending remote D1 migrations, and publishes the Worker. Subsequent deployments use the same command and retain the database. Set `CLOUDFLARE_WORKER_NAME` if the default Worker name `team-wheel` is already used. For CI, use Cloudflare's `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` environment variables as well.
 
 To validate the deployment artifact without provisioning or publishing:
 
@@ -53,7 +52,7 @@ CLOUDFLARE_D1_DATABASE_ID='00000000-0000-4000-8000-000000000001' npm run deploy 
 
 ### Sites preview
 
-The `.openai/hosting.json` manifest retains the project's Sites identity and `DB` binding. Sites provisions its own D1 database and applies the same migrations. Its preview uses platform access controls with `ACCESS_MODE=sites`; keep this value in Sites runtime settings. Independent Cloudflare deployments explicitly clear that mode and use `TEAM_PASSWORD` instead. Hosting deployments have separate databases; a Sites preview does not automatically transfer its data to an independently deployed Worker.
+The `.openai/hosting.json` manifest retains the project's Sites identity and `DB` binding. Sites provisions its own D1 database and applies the same migrations. `ACCESS_MODE=sites` keeps the original single-team wheel behind Sites access controls. A Worker with `TEAM_PASSWORD` configured also keeps the original single-team wheel, using username **team** and the configured password. Fresh independent Workers use the create and join flow. Hosting deployments have separate databases, so moving a roster and history from Sites to Workers requires an explicit data transfer.
 
 ## Delete a member
 
@@ -108,4 +107,4 @@ Tests use Node's test runner and in-memory SQLite with the real SQL migrations. 
 - `db/schema.ts`, `drizzle/`: schema and versioned migrations.
 - `scripts/database.mjs`, `scripts/deploy-cloudflare.mjs`: local database setup and independent deployment.
 
-All members with access can edit the roster, spin, and undo the latest pick. This version is intentionally one team per deployment.
+All members with access to a team can edit its roster, spin, and undo its latest pick.

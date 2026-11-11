@@ -19,6 +19,15 @@ import {
   getCandidates,
   selectCandidate,
 } from "../lib/wheel";
+import {
+  createTeam,
+  getJoinedTeams,
+  getTeamAccess,
+  joinTeam,
+  limitTeamAccess,
+  rotateTeamCode,
+  teamSessionCookie,
+} from "../lib/team-store";
 
 function database() {
   const sqlite = new DatabaseSync(":memory:");
@@ -69,6 +78,115 @@ function database() {
   } as unknown as D1Database;
   return { db, close: () => sqlite.close() };
 }
+
+test("invite codes grant access to one team and rotation closes the old invite", async () => {
+  const { db, close } = database();
+  try {
+    const first = await createTeam(db, "Design");
+    const second = await createTeam(db, "Engineering");
+    const cookie = (teamId: number, token: string) =>
+      teamSessionCookie(teamId, token, true).split(";")[0];
+    const ownerCookie = cookie(first.teamId, first.token);
+    const owner = await getTeamAccess(db, first.teamId, ownerCookie);
+    assert.ok(owner?.joinCode);
+    assert.equal(owner.name, "Design");
+    assert.deepEqual(
+      (await getJoinedTeams(db, ownerCookie)).map((team) => team.id),
+      [first.teamId],
+    );
+    assert.deepEqual(
+      await getJoinedTeams(db, cookie(second.teamId, first.token)),
+      [],
+    );
+    assert.equal(await getTeamAccess(db, second.teamId, ownerCookie), null);
+    assert.equal(
+      await getTeamAccess(
+        db,
+        second.teamId,
+        cookie(second.teamId, first.token),
+      ),
+      null,
+    );
+
+    assert.deepEqual(await joinTeam(db, owner.joinCode, ownerCookie), {
+      teamId: first.teamId,
+    });
+    const joined = await joinTeam(db, owner.joinCode, null);
+    assert.ok(joined.token);
+    const memberCookie = cookie(joined.teamId, joined.token);
+    assert.deepEqual(
+      { ...(await getTeamAccess(db, first.teamId, memberCookie)) },
+      {
+        id: first.teamId,
+        name: "Design",
+        joinCode: null,
+      },
+    );
+    const newCode = await rotateTeamCode(db, first.teamId);
+    assert.notEqual(newCode, owner.joinCode);
+    await assert.rejects(
+      joinTeam(db, owner.joinCode, null),
+      /code isn’t valid/,
+    );
+    assert.equal((await joinTeam(db, newCode, null)).teamId, first.teamId);
+    assert.ok(await getTeamAccess(db, first.teamId, memberCookie));
+  } finally {
+    close();
+  }
+});
+
+test("teams have independent profiles, revisions, spin request IDs, history and undo", async () => {
+  const { db, close } = database();
+  try {
+    const { teamId: first } = await createTeam(db, "Design");
+    const { teamId: second } = await createTeam(db, "Engineering");
+    await addPerson(db, "Alex", first);
+    const alex = (await getSnapshot(db, first)).people[0];
+    const firstRevision = (await getSnapshot(db, first)).revision;
+    await addPerson(db, "Maya", second);
+    const maya = (await getSnapshot(db, second)).people[0];
+    assert.equal(alex.defaultColor, maya.defaultColor);
+    assert.equal((await getSnapshot(db, first)).revision, firstRevision);
+    assert.equal((await getSnapshot(db)).people.length, 0);
+    await assert.rejects(
+      updatePerson(db, alex.id, { name: "Changed" }, second),
+      /could not be found/,
+    );
+    await assert.rejects(
+      deletePerson(db, alex.id, second),
+      /no longer in the team/,
+    );
+    const requestId = crypto.randomUUID();
+    const firstPick = await spin(db, requestId, "random", [], first);
+    const secondPick = await spin(db, requestId, "balanced", [], second);
+    assert.equal(firstPick.pick.personId, alex.id);
+    assert.equal(secondPick.pick.personId, maya.id);
+    assert.deepEqual(
+      (await getHistory(db, secondPick.pick.sequence, second)).items,
+      [],
+    );
+    await undoPick(db, requestId, first);
+    assert.equal((await getSnapshot(db, first)).totalPicks, 0);
+    assert.equal((await getSnapshot(db, second)).totalPicks, 1);
+  } finally {
+    close();
+  }
+});
+
+test("team code guessing is limited by client independently of team creation", async () => {
+  const { db, close } = database();
+  try {
+    for (let attempt = 0; attempt < 60; attempt++)
+      await limitTeamAccess(db, "join", "client");
+    await assert.rejects(limitTeamAccess(db, "join", "client"), {
+      status: 429,
+    });
+    await limitTeamAccess(db, "join", "other-client");
+    await limitTeamAccess(db, "create", "client");
+  } finally {
+    close();
+  }
+});
 
 test("saved picks drive counters; rename and pause preserve historical names", async () => {
   const { db, close } = database();

@@ -8,7 +8,7 @@ function authenticated(password: string) {
     },
   });
 }
-test("independent hosting fails closed until a password is configured", async () => {
+test("the legacy password gate fails closed without a configured password", async () => {
   assert.equal(
     (await checkAccess(new Request("https://wheel.example/"), {}))?.status,
     503,

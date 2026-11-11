@@ -24,7 +24,7 @@ const config = JSON.parse(
 );
 config.name = process.env.CLOUDFLARE_WORKER_NAME || "team-wheel";
 config.topLevelName = config.name;
-config.vars = {}; // Independent hosting always requires TEAM_PASSWORD; Sites identity is not trusted here.
+config.vars = {}; // Independent hosting uses team codes, or TEAM_PASSWORD for legacy wheels.
 config.workers_dev = true;
 config.d1_databases = [
   {
@@ -56,6 +56,6 @@ if (process.argv.includes("--dry-run")) {
   ]);
   run([...wrangler, "deploy", "--config", path]);
   console.log(
-    "Share the workers.dev URL after setting TEAM_PASSWORD. Username: team. See README.md.",
+    "Open the workers.dev URL to create a team. See README.md for legacy deployment options.",
   );
 }

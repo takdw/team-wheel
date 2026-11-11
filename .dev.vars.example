@@ -1,3 +1,2 @@
-# Optional for previewing the production build locally with npm start.
-# Local development with npm run dev needs no password.
-TEAM_PASSWORD="replace-with-a-long-shared-passphrase"
+# Optional for testing the legacy single-team wheel.
+# TEAM_PASSWORD="replace-with-a-long-shared-passphrase"

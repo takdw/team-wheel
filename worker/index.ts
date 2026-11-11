@@ -1,5 +1,5 @@
 import handler from "vinext/server/fetch-handler";
-import { checkAccess } from "../lib/access";
+import { checkAccess, usesLegacyTeam } from "../lib/access";
 import { runWithConnectorBinding } from "../lib/connector-context";
 import type { ConnectorBinding } from "../lib/connector-contract.mjs";
 
@@ -9,7 +9,7 @@ const worker = {
     env: Cloudflare.Env,
     ctx: ExecutionContext<{ CONNECTORS?: ConnectorBinding }>,
   ) {
-    if (!import.meta.env.DEV) {
+    if (!import.meta.env.DEV && usesLegacyTeam(env)) {
       const denied = await checkAccess(request, env);
       if (denied) return denied;
     }
