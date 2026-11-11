@@ -1,5 +1,6 @@
 import handler from "vinext/server/fetch-handler";
 import { checkAccess } from "../lib/access";
+import { removeTestSpins } from "../lib/site-cleanup";
 import { runWithConnectorBinding } from "../lib/connector-context";
 import type { ConnectorBinding } from "../lib/connector-contract.mjs";
 
@@ -9,6 +10,14 @@ const worker = {
     env: Cloudflare.Env,
     ctx: ExecutionContext<{ CONNECTORS?: ConnectorBinding }>,
   ) {
+    if (
+      env.DB &&
+      env.ACCESS_MODE === "sites" &&
+      request.method === "POST" &&
+      new URL(request.url).pathname === "/api/internal/remove-test-spins"
+    ) {
+      return removeTestSpins(request, env.DB);
+    }
     if (!import.meta.env.DEV) {
       const denied = await checkAccess(request, env);
       if (denied) return denied;
