@@ -4,8 +4,10 @@ import type {
   Mode,
   Person,
   Pick,
+  PickMode,
   Snapshot,
   SpinResult,
+  TurnResult,
 } from "./wheel";
 import {
   candidateLandingAngle,
@@ -31,7 +33,7 @@ interface PickRow {
   id: string;
   person_id: string;
   person_name: string;
-  mode: Mode;
+  mode: PickMode;
   candidates: string;
   landing_angle: number | null;
   created_at: string;
@@ -41,6 +43,10 @@ interface RosterRow {
   id: string;
   name: string;
   active: number;
+  absent: number;
+  shields: number;
+  shield_armed: number;
+  volunteer_cooldown: number;
   count: number;
   last_picked_at: string | null;
   color: string | null;
@@ -74,7 +80,8 @@ export async function getSnapshot(db: D1Database): Promise<Snapshot> {
   // D1 batches are transactions, keeping the revision and counts consistent.
   const queries = [
     db.prepare("SELECT revision FROM wheel_state WHERE id = 1"),
-    db.prepare(`SELECT people.id, people.name, people.active, people.color, people.default_color, people.photo_version, people.deleted_at,
+    db.prepare(`SELECT people.id, people.name, people.active, people.absent, people.shields, people.shield_armed,
+      people.volunteer_cooldown, people.color, people.default_color, people.photo_version, people.deleted_at,
       COUNT(picks.sequence) AS count, MAX(picks.created_at) AS last_picked_at
       FROM people LEFT JOIN picks ON people.id = picks.person_id AND picks.undone_at IS NULL
       GROUP BY people.id ORDER BY people.created_at, people.id`),
@@ -104,6 +111,10 @@ export async function getSnapshot(db: D1Database): Promise<Snapshot> {
       id: person.id,
       name: person.name,
       active: Boolean(person.active),
+      absent: Boolean(person.absent),
+      shields: person.shields,
+      shieldArmed: Boolean(person.shield_armed),
+      volunteerCooldown: Boolean(person.volunteer_cooldown),
       count: person.count,
       lastPickedAt: person.last_picked_at,
       color: person.color,
@@ -165,6 +176,14 @@ export async function updatePerson(
     assignments.push("active = ?");
     bindings.push(Number(values.active));
   }
+  if (values.absent !== undefined) {
+    assignments.push("absent = ?");
+    bindings.push(Number(values.absent));
+  }
+  if (values.shieldArmed !== undefined) {
+    assignments.push("shield_armed = ?");
+    bindings.push(Number(values.shieldArmed));
+  }
   if (values.color !== undefined) {
     assignments.push("color = ?");
     bindings.push(values.color);
@@ -179,7 +198,8 @@ export async function updatePerson(
   if (!assignments.length) throw new AppError("Choose a change to save.");
   const update = db
     .prepare(
-      `UPDATE people SET ${assignments.join(", ")} WHERE id = ? AND deleted_at IS NULL RETURNING id`,
+      `UPDATE people SET ${assignments.join(", ")} WHERE id = ? AND deleted_at IS NULL
+       ${values.shieldArmed ? "AND shields > 0" : ""} RETURNING id`,
     )
     .bind(...bindings, id);
   const result = values.color
@@ -187,8 +207,10 @@ export async function updatePerson(
     : await update.all();
   if (!result.results.length)
     throw new AppError(
-      "That person could not be found. Refresh the team list.",
-      404,
+      values.shieldArmed
+        ? "No shield is available for this teammate. Refresh the team list."
+        : "That person could not be found. Refresh the team list.",
+      values.shieldArmed ? 409 : 404,
     );
 }
 export async function deletePerson(db: D1Database, id: string): Promise<void> {
@@ -246,12 +268,25 @@ export async function getPersonPhoto(
   if (!row?.photo) throw new AppError("Photo not found.", 404);
   return row.photo;
 }
-export async function spin(
+interface PickEffect {
+  personId: string;
+  shieldDelta: -1 | 0 | 1;
+  cooldownBefore: boolean;
+  cooldownAfter: boolean;
+}
+interface PickChoice {
+  person: { id: string; name: string };
+  candidates: Candidate[];
+  landingAngle: number | null;
+  effects: PickEffect[];
+}
+
+async function recordPick(
   db: D1Database,
   id: string,
-  mode: Mode,
-  excludedIds: readonly string[] = [],
-): Promise<SpinResult> {
+  mode: PickMode,
+  choose: (state: Snapshot) => PickChoice,
+) {
   for (let attempt = 0; attempt < 8; attempt++) {
     const existing = await db
       .prepare("SELECT * FROM picks WHERE id = ?")
@@ -263,57 +298,106 @@ export async function spin(
           "This spin request was already used for another mode.",
           409,
         );
-      const candidates = JSON.parse(existing.candidates) as Candidate[];
-      return {
-        pick: toPick(existing),
-        candidates,
-        landingAngle:
-          existing.landing_angle ??
-          candidateMidpoint(candidates, existing.person_id),
-        state: await getSnapshot(db),
-      };
+      return { row: existing, state: await getSnapshot(db) };
     }
     const state = await getSnapshot(db);
-    const candidates = getCandidates(state.people, mode, excludedIds);
-    if (!candidates.length)
-      throw new AppError("Add or resume a teammate before spinning.");
-    const winner = selectCandidate(candidates, secureFraction());
-    const landingAngle = candidateLandingAngle(
-      candidates,
-      winner.id,
-      secureFraction(),
-    );
-    // Competing edits, spins, or undo advance the revision through database triggers.
-    // Only a draw from the current snapshot can commit; other draws retry with fresh counts.
+    const { person, candidates, landingAngle, effects } = choose(state);
+    // Recheck the revision before saving a turn and applying its effects.
     const result = await db
       .prepare(
-        `INSERT INTO picks (id, person_id, person_name, mode, candidates, landing_angle, created_at)
-      SELECT ?, ?, ?, ?, ?, ?, ? WHERE (SELECT revision FROM wheel_state WHERE id = 1) = ?
+        `INSERT INTO picks (id, person_id, person_name, mode, candidates, landing_angle, effects, created_at)
+      SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE (SELECT revision FROM wheel_state WHERE id = 1) = ?
       ON CONFLICT(id) DO NOTHING RETURNING *`,
       )
       .bind(
         id,
-        winner.id,
-        winner.name,
+        person.id,
+        person.name,
         mode,
         JSON.stringify(candidates),
         landingAngle,
+        effects.length ? JSON.stringify(effects) : null,
         new Date().toISOString(),
         state.revision,
       )
       .all<PickRow>();
     if (result.results.length)
-      return {
-        pick: toPick(result.results[0]),
-        candidates,
-        landingAngle,
-        state: await getSnapshot(db),
-      };
+      return { row: result.results[0], state: await getSnapshot(db) };
   }
-  throw new AppError(
-    "The team is busy spinning. Please try again in a moment.",
-    409,
-  );
+  throw new AppError("The team is busy. Please try again in a moment.", 409);
+}
+export async function spin(
+  db: D1Database,
+  id: string,
+  mode: Mode,
+  excludedIds: readonly string[] = [],
+): Promise<SpinResult> {
+  const { row, state } = await recordPick(db, id, mode, (snapshot) => {
+    const candidates = getCandidates(snapshot.people, mode, excludedIds);
+    if (!candidates.length)
+      throw new AppError("Add or resume a teammate before spinning.");
+    const person = selectCandidate(candidates, secureFraction());
+    const effects: PickEffect[] = [];
+    if (mode === "wildcard") {
+      for (const teammate of snapshot.people) {
+        if (!teammate.active || excludedIds.includes(teammate.id)) continue;
+        if (!teammate.shieldArmed && !teammate.volunteerCooldown) continue;
+        effects.push({
+          personId: teammate.id,
+          shieldDelta: teammate.shieldArmed ? -1 : 0,
+          cooldownBefore: teammate.volunteerCooldown,
+          cooldownAfter: teammate.shieldArmed && teammate.volunteerCooldown,
+        });
+      }
+    }
+    return {
+      person,
+      candidates,
+      landingAngle: candidateLandingAngle(
+        candidates,
+        person.id,
+        secureFraction(),
+      ),
+      effects,
+    };
+  });
+  const candidates = JSON.parse(row.candidates) as Candidate[];
+  return {
+    pick: toPick(row),
+    candidates,
+    landingAngle:
+      row.landing_angle ?? candidateMidpoint(candidates, row.person_id),
+    state,
+  };
+}
+export async function volunteer(
+  db: D1Database,
+  id: string,
+  personId: string,
+): Promise<TurnResult> {
+  const { row, state } = await recordPick(db, id, "volunteer", (snapshot) => {
+    const person = snapshot.people.find((teammate) => teammate.id === personId);
+    if (!person?.active) throw new AppError("Choose an active teammate.");
+    return {
+      person,
+      candidates: [],
+      landingAngle: null,
+      effects: [
+        {
+          personId,
+          shieldDelta: person.shields < 2 ? 1 : 0,
+          cooldownBefore: person.volunteerCooldown,
+          cooldownAfter: true,
+        },
+      ],
+    };
+  });
+  if (row.person_id !== personId)
+    throw new AppError(
+      "This volunteer request was already used for another teammate.",
+      409,
+    );
+  return { pick: toPick(row), state };
 }
 export async function undoPick(db: D1Database, id: string): Promise<void> {
   const result = await db

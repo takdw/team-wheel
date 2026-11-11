@@ -16,6 +16,14 @@ export const people = sqliteTable("people", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   active: integer("active", { mode: "boolean" }).notNull().default(true),
+  absent: integer("absent", { mode: "boolean" }).notNull().default(false),
+  shields: integer("shields").notNull().default(0),
+  shieldArmed: integer("shield_armed", { mode: "boolean" })
+    .notNull()
+    .default(false),
+  volunteerCooldown: integer("volunteer_cooldown", { mode: "boolean" })
+    .notNull()
+    .default(false),
   createdAt: text("created_at").notNull(),
   color: text("color"),
   defaultColor: text("default_color"),
@@ -32,14 +40,20 @@ export const picks = sqliteTable(
       .notNull()
       .references(() => people.id),
     personName: text("person_name").notNull(),
-    mode: text("mode", { enum: ["random", "balanced"] }).notNull(),
+    mode: text("mode", {
+      enum: ["random", "balanced", "wildcard", "volunteer"],
+    }).notNull(),
     candidates: text("candidates").notNull(),
     landingAngle: real("landing_angle"),
+    effects: text("effects"),
     createdAt: text("created_at").notNull(),
     undoneAt: text("undone_at"),
   },
   (table) => [
     index("picks_person_valid_idx").on(table.personId, table.undoneAt),
-    check("picks_mode_check", sql`${table.mode} IN ('random', 'balanced')`),
+    check(
+      "picks_mode_check",
+      sql`${table.mode} IN ('random', 'balanced', 'wildcard', 'volunteer')`,
+    ),
   ],
 );

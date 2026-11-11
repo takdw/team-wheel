@@ -12,6 +12,7 @@ import {
   spin,
   undoPick,
   updatePerson,
+  volunteer,
 } from "../lib/store";
 import {
   candidateMidpoint,
@@ -170,6 +171,107 @@ test("spin exclusions affect one session without saving a roster pause", async (
       new Set([eligible.id, sittingOut.id]),
     );
     assert.equal(freshPick.state.totalPicks, 2);
+  } finally {
+    close();
+  }
+});
+test("volunteer turns grant at most two shields and can be retried and undone", async () => {
+  const { db, close } = database();
+  try {
+    await addPerson(db, "Volunteer");
+    const person = (await getSnapshot(db)).people[0];
+    await assert.rejects(
+      updatePerson(db, person.id, { shieldArmed: true }),
+      /No shield/,
+    );
+    const firstId = crypto.randomUUID();
+    await Promise.all([
+      volunteer(db, firstId, person.id),
+      volunteer(db, firstId, person.id),
+    ]);
+    const first = (await getSnapshot(db)).people[0];
+    assert.equal(first.shields, 1);
+    assert.equal(first.count, 1);
+    assert.equal(first.volunteerCooldown, true);
+    const next = await Promise.all([
+      volunteer(db, crypto.randomUUID(), person.id),
+      volunteer(db, crypto.randomUUID(), person.id),
+    ]);
+    const latest = next.reduce((a, b) =>
+      a.pick.sequence > b.pick.sequence ? a : b,
+    );
+    assert.equal(latest.pick.mode, "volunteer");
+    assert.equal(latest.state.totalPicks, 3);
+    assert.equal(latest.state.people[0].shields, 2);
+    await undoPick(db, latest.pick.id);
+    assert.equal((await getSnapshot(db)).people[0].shields, 2);
+    const second = next.find((turn) => turn.pick.id !== latest.pick.id)!;
+    await undoPick(db, second.pick.id);
+    assert.equal((await getSnapshot(db)).people[0].shields, 1);
+    await undoPick(db, firstId);
+    const reset = (await getSnapshot(db)).people[0];
+    assert.equal(reset.shields, 0);
+    assert.equal(reset.volunteerCooldown, false);
+    assert.equal(reset.count, 0);
+  } finally {
+    close();
+  }
+});
+test("an armed shield preserves the volunteer weight until the next eligible Wild Card spin", async () => {
+  const { db, close } = database();
+  try {
+    await addPerson(db, "Volunteer");
+    await addPerson(db, "Absent");
+    const { people } = await getSnapshot(db);
+    const person = people.find((teammate) => teammate.name === "Volunteer")!;
+    const absent = people.find((teammate) => teammate.name === "Absent")!;
+    await updatePerson(db, absent.id, { absent: true });
+    await volunteer(db, crypto.randomUUID(), person.id);
+    await updatePerson(db, person.id, { shieldArmed: true });
+
+    const random = await spin(db, crypto.randomUUID(), "random");
+    assert.equal(random.candidates.length, 2);
+    const sittingOut = await spin(db, crypto.randomUUID(), "wildcard", [
+      person.id,
+    ]);
+    assert.equal(
+      sittingOut.state.people.find((teammate) => teammate.id === person.id)
+        ?.shieldArmed,
+      true,
+    );
+
+    const shielded = await spin(db, crypto.randomUUID(), "wildcard");
+    assert.deepEqual(
+      shielded.candidates.map((candidate) => candidate.id),
+      [absent.id],
+    );
+    const shieldUsed = shielded.state.people.find(
+      (teammate) => teammate.id === person.id,
+    )!;
+    assert.equal(shieldUsed.shields, 0);
+    assert.equal(shieldUsed.shieldArmed, false);
+    assert.equal(shieldUsed.volunteerCooldown, true);
+    const replay = await spin(db, shielded.pick.id, "wildcard");
+    assert.equal(replay.state.totalPicks, shielded.state.totalPicks);
+
+    const eligible = await spin(db, crypto.randomUUID(), "wildcard");
+    const chance = eligible.candidates.find(
+      (candidate) => candidate.id === person.id,
+    )!.probability;
+    assert.ok(Math.abs(chance - 1 / 7) < 1e-12);
+    assert.equal(
+      eligible.state.people.find((teammate) => teammate.id === person.id)
+        ?.volunteerCooldown,
+      false,
+    );
+    await undoPick(db, eligible.pick.id);
+    await undoPick(db, shielded.pick.id);
+    const undone = (await getSnapshot(db)).people.find(
+      (teammate) => teammate.id === person.id,
+    )!;
+    assert.equal(undone.shields, 1);
+    assert.equal(undone.shieldArmed, true);
+    assert.equal(undone.volunteerCooldown, true);
   } finally {
     close();
   }

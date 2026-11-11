@@ -201,6 +201,7 @@ h1 {
 }
 .mode-picker {
   display: flex;
+  width: min(100%, 400px);
   padding: 4px;
   gap: 3px;
   background: #eaece3;
@@ -208,10 +209,12 @@ h1 {
 }
 .mode-picker button {
   display: flex;
+  flex: 1;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-width: 126px;
+  min-width: 0;
+  white-space: nowrap;
   min-height: 38px;
   background: transparent;
   border-radius: 7px;
@@ -230,6 +233,7 @@ h1 {
 }
 .mode-description {
   font-size: 12px;
+  text-align: center;
   color: var(--muted);
   margin: 13px 0 22px;
 }
@@ -457,7 +461,7 @@ h2 {
 }
 .roster-head {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 42px 65px;
+  grid-template-columns: minmax(0, 1fr) 42px 65px 36px;
   gap: 7px;
   align-items: center;
   margin-top: 25px;
@@ -488,7 +492,7 @@ h2 {
 }
 .person-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 42px 65px;
+  grid-template-columns: minmax(0, 1fr) 42px 65px 36px;
   gap: 7px;
   align-items: center;
   min-height: 70px;
@@ -579,6 +583,73 @@ h2 {
 }
 .person-tools button:hover {
   text-decoration: underline;
+}
+.person-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.person-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: var(--sage);
+  color: var(--ink);
+  font-size: 10px;
+}
+.person-badge-absent,
+.mode-tag-wildcard {
+  background: #f4e7ce;
+  color: #664513;
+}
+.person-modifiers .modifier-trigger {
+  width: 36px;
+  min-height: 36px;
+  color: var(--green);
+}
+.modifier-popover {
+  position: fixed;
+  inset: auto 0 16px;
+  margin: 0 auto;
+  width: 172px;
+  padding: 4px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 4px 18px #253d3333;
+}
+.modifier-popover:popover-open {
+  display: grid;
+}
+.modifier-popover button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 6px 8px;
+  border-radius: 5px;
+  background: transparent;
+  font-size: 12px;
+  text-align: left;
+}
+.modifier-popover button:hover:not(:disabled) {
+  background: var(--sage);
+}
+.modifier-popover button:focus-visible {
+  outline-offset: -2px;
+}
+@supports (top: anchor(bottom)) {
+  .modifier-popover {
+    inset: auto;
+    top: anchor(bottom);
+    right: anchor(right);
+    margin: 5px 0;
+    position-try-fallbacks: flip-block;
+  }
 }
 .add-person {
   display: flex;
@@ -999,7 +1070,13 @@ h2 {
     max-width: 290px;
   }
   .mode-picker button {
-    min-width: 123px;
+    gap: 4px;
+    padding-inline: 7px;
+    font-size: 12px;
+  }
+  .mode-picker button svg {
+    width: 14px;
+    height: 14px;
   }
   .history-empty {
     padding: 20px 16px;
@@ -1022,7 +1099,8 @@ h2 {
   }
   .roster-head,
   .person-row {
-    grid-template-columns: minmax(0, 1fr) 38px 59px;
+    grid-template-columns: minmax(0, 1fr) 32px 54px 36px;
+    column-gap: 5px;
   }
   .team-panel {
     padding-left: 18px;

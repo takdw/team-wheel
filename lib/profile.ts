@@ -40,6 +40,8 @@ export const personUpdateSchema = z
       .max(60, "Keep names to 60 characters.")
       .optional(),
     active: z.boolean().optional(),
+    absent: z.boolean().optional(),
+    shieldArmed: z.boolean().optional(),
     color: z
       .string()
       .regex(/^#[0-9a-f]{6}$/i, "Choose a valid color.")

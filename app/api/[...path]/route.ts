@@ -11,8 +11,10 @@ import {
   getPersonPhoto,
   deletePerson,
   restorePerson,
+  volunteer,
 } from "@/lib/store";
 import { decodePhoto, personUpdateSchema } from "@/lib/profile";
+import { spinModes } from "@/lib/wheel";
 
 export const dynamic = "force-dynamic";
 const name = z
@@ -94,12 +96,18 @@ async function handle(request: Request): Promise<Response> {
       const values = z
         .object({
           id: uuid,
-          mode: z.enum(["random", "balanced"]),
+          mode: z.enum(spinModes),
           excludedIds: z.array(uuid).max(100).optional(),
         })
         .parse(body);
       return Response.json(
         await spin(env.DB, values.id, values.mode, values.excludedIds),
+        { headers },
+      );
+    } else if (method === "POST" && path === "/api/volunteers") {
+      const values = z.object({ id: uuid, personId: uuid }).parse(body);
+      return Response.json(
+        await volunteer(env.DB, values.id, values.personId),
         { headers },
       );
     } else if (method === "POST" && path === "/api/undo") {

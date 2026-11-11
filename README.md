@@ -1,6 +1,6 @@
 # Team Wheel
 
-A shared team wheel with random and balanced selection, per-person counters, custom colors, profile photos, and persistent pick history. Built with TypeScript, React, Vinext, Cloudflare Workers, and D1 (hosted SQLite).
+A shared team wheel with Random, Balanced, and Wild Card selection, per-person counters, custom colors, profile photos, and persistent pick history. Built with TypeScript, React, Vinext, Cloudflare Workers, and D1 (hosted SQLite).
 
 ## Run locally
 
@@ -81,10 +81,11 @@ The pointer sits at **three o'clock**. Each new spin saves a cryptographically r
 
 - **Random:** every active person has the same probability on every spin. Previous picks have no effect; streaks are possible.
 - **Balanced:** `weight = 1 / (1 + person_count - minimum_active_count)`, then normalize the weights into probabilities. Counts of 3, 3, and 4 yield 40%, 40%, and 20%. This reduces repeat selections without guaranteeing a no-repeat order.
-- Counters include valid picks from both modes across all saved history. New people start at zero. Paused people retain their history but are excluded from selection and the balancing baseline. Duplicate display names are allowed; people have separate stable IDs.
+- **Wild Card** starts with equal weights. In **Team**, open the three-dot menu beside a teammate. **Mark absent** doubles their weight until they are marked present. **I’ll go first** records a turn immediately, earns one shield up to two, and divides the volunteer’s weight by three on their next eligible Wild Card spin. **Arm shield** excludes them for one Wild Card spin that would have included them.
+- Counters include valid spins and volunteered turns. New people start at zero. Paused people retain their history but are excluded from selection and the balancing baseline. Duplicate display names are allowed; people have separate stable IDs.
 - The server uses `crypto.getRandomValues()` to draw a 53-bit uniform fraction. The animated wheel represents the odds used for that saved result; the roster shows the odds for the **next** spin.
 - The result is saved before the animation. Request IDs make retries idempotent. Database revision triggers and a conditional insert ensure competing spins use current counts; a stale draw is discarded and retried.
-- Only the latest valid pick can be undone. Undo retains the record and removes it from counts. Renaming a teammate preserves their name on past picks.
+- Only the latest valid pick can be undone. Undo retains the record, removes it from counts, and reverses any shield or weight changes from that turn. Renaming a teammate preserves their name on past picks.
 - Other open tabs refresh every 15 seconds while visible and on focus. They share counts and history; they do not replay another person's wheel animation.
 
 ## Development checks

@@ -10,6 +10,7 @@ import {
   CircleHelp,
   Cloud,
   Copy,
+  Hand,
   History,
   LoaderCircle,
   Pause,
@@ -17,7 +18,9 @@ import {
   Play,
   Plus,
   RotateCcw,
+  Shield,
   Shuffle,
+  Sparkles,
   Trash2,
   Users,
   X,
@@ -28,18 +31,39 @@ import {
   personColor,
   textColor,
   secureFraction,
+  spinModes,
   type Candidate,
   type HistoryPage,
   type Mode,
   type Person,
   type Snapshot,
   type SpinResult,
+  type TurnResult,
 } from "@/lib/wheel";
 import { animateWheel, spinRotation } from "@/lib/motion";
 import { Avatar } from "./components/avatar";
 import { PersonEditor } from "./components/person-editor";
+import { PersonModifiers } from "./components/person-modifiers";
 import { Modal } from "./components/modal";
 import { WinnerDialog } from "./components/winner-dialog";
+
+const modeInfo = {
+  random: {
+    label: "Random",
+    Icon: Shuffle,
+    description: "Equal chance for everyone.",
+  },
+  balanced: {
+    label: "Balanced",
+    Icon: Users,
+    description: "Higher odds for people with fewer turns.",
+  },
+  wildcard: {
+    label: "Wild Card",
+    Icon: Sparkles,
+    description: "Set attendance, volunteer, or arm a shield in Team.",
+  },
+};
 
 class RequestError extends Error {
   constructor(
@@ -288,7 +312,7 @@ export default function Home() {
   const [lastDeleted, setLastDeleted] = useState<Person | null>(null);
   const [sortByPicks, setSortByPicks] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [outcome, setOutcome] = useState<SpinResult | null>(null);
+  const [outcome, setOutcome] = useState<SpinResult | TurnResult | null>(null);
   const [revealed, setRevealed] = useState(false);
   const [winnerOpen, setWinnerOpen] = useState(false);
   const [sitOutIds, setSitOutIds] = useState<string[]>([]);
@@ -303,6 +327,7 @@ export default function Home() {
   const teamButton = useRef<HTMLButtonElement>(null);
   const historyButton = useRef<HTMLButtonElement>(null);
   const spinButton = useRef<HTMLButtonElement>(null);
+  const volunteerRequests = useRef(new Map<string, string>());
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const apply = useCallback((next: Snapshot) => {
     if (revision.current !== null && next.revision < revision.current) return;
@@ -346,7 +371,8 @@ export default function Home() {
     () => getCandidates(state?.people ?? [], mode, sitOutIds),
     [state?.people, mode, sitOutIds],
   );
-  const shownCandidates = outcome?.candidates ?? candidates;
+  const spinOutcome = outcome && "candidates" in outcome ? outcome : null;
+  const shownCandidates = spinOutcome?.candidates ?? candidates;
   const odds = new Map(
     candidates.map((candidate) => [candidate.id, candidate.probability]),
   );
@@ -364,11 +390,20 @@ export default function Home() {
   const latestValid = state?.history.items.find((pick) => !pick.undoneAt);
   const leaders = state?.leaders ?? [];
   const topCount = leaders[0]?.count ?? 0;
-  const emptyNote = state?.people.some((person) => person.active)
-    ? "Refresh to clear sit-outs."
-    : state?.people.length
-      ? "Resume someone in Team."
-      : "Add a name to start.";
+  const anyActive = state?.people.some((person) => person.active);
+  const anyShielded =
+    mode === "wildcard" &&
+    state?.people.some(
+      (person) =>
+        person.active && person.shieldArmed && !sitOutIds.includes(person.id),
+    );
+  const emptyNote = anyShielded
+    ? "Disarm a shield in Team."
+    : anyActive
+      ? "Refresh to clear sit-outs."
+      : state?.people.length
+        ? "Resume someone in Team."
+        : "Add a name to start.";
 
   function closeTeam() {
     setDrawer((current) => (current === "team" ? null : current));
@@ -412,14 +447,11 @@ export default function Home() {
   async function startSpin(sittingOut = sitOutIds) {
     if (operating.current) return;
     const people = state?.people ?? [];
-    if (
-      !pendingSpin &&
-      !people.some((person) => person.active && !sittingOut.includes(person.id))
-    )
-      return;
     const excludedIds = people
       .filter((person) => sittingOut.includes(person.id))
       .map((person) => person.id);
+    if (!pendingSpin && !getCandidates(people, mode, excludedIds).length)
+      return;
     operating.current = true;
     setWinnerOpen(false);
     setOperation("spin");
@@ -445,6 +477,38 @@ export default function Home() {
           : "The connection was interrupted.") +
           " If the result is uncertain, retrying resumes the same spin.",
       );
+      operating.current = false;
+      setOperation(null);
+    }
+  }
+  async function goFirst(person: Person) {
+    if (operating.current || pendingSpin) return;
+    operating.current = true;
+    setOperation("save");
+    setError("");
+    const id = volunteerRequests.current.get(person.id) ?? crypto.randomUUID();
+    volunteerRequests.current.set(person.id, id);
+    try {
+      const result = await request<TurnResult>("/api/volunteers", {
+        id,
+        personId: person.id,
+      });
+      volunteerRequests.current.delete(person.id);
+      apply(result.state);
+      setOutcome(result);
+      setRevealed(true);
+      setLastDeleted(null);
+      closeTeam();
+      setWinnerOpen(true);
+    } catch (issue) {
+      if (issue instanceof RequestError && issue.status < 500)
+        volunteerRequests.current.delete(person.id);
+      setError(
+        issue instanceof Error
+          ? issue.message
+          : "Couldn’t save the turn. Try again for the same teammate.",
+      );
+    } finally {
       operating.current = false;
       setOperation(null);
     }
@@ -596,38 +660,29 @@ export default function Home() {
               role="group"
               aria-label="Selection mode"
             >
-              <button
-                aria-pressed={mode === "random"}
-                disabled={busy || Boolean(pendingSpin)}
-                onClick={() => {
-                  setMode("random");
-                  setOutcome(null);
-                  setRevealed(false);
-                }}
-              >
-                <Shuffle size={17} /> Random
-              </button>
-              <button
-                aria-pressed={mode === "balanced"}
-                disabled={busy || Boolean(pendingSpin)}
-                onClick={() => {
-                  setMode("balanced");
-                  setOutcome(null);
-                  setRevealed(false);
-                }}
-              >
-                <Users size={17} /> Balanced
-              </button>
+              {spinModes.map((value) => {
+                const { label, Icon } = modeInfo[value];
+                return (
+                  <button
+                    key={value}
+                    aria-pressed={mode === value}
+                    disabled={busy || Boolean(pendingSpin)}
+                    onClick={() => {
+                      setMode(value);
+                      setOutcome(null);
+                      setRevealed(false);
+                    }}
+                  >
+                    <Icon size={17} /> {label}
+                  </button>
+                );
+              })}
             </div>
-            <p className="mode-description">
-              {mode === "random"
-                ? "Equal chance for everyone."
-                : "Higher odds for people with fewer picks."}
-            </p>
+            <p className="mode-description">{modeInfo[mode].description}</p>
             <Wheel
               candidates={shownCandidates}
               people={state?.people ?? []}
-              outcome={outcome}
+              outcome={spinOutcome}
               onFinish={finishSpin}
               onOpenTeam={() => setDrawer("team")}
               emptyNote={emptyNote}
@@ -723,13 +778,15 @@ export default function Home() {
                 so repeats can happen.
               </p>
               <p>
-                <strong>Balanced</strong> gives people with fewer picks more
-                weight: 1 ÷ (1 + picks − the team’s lowest active count).
+                <strong>Balanced</strong> gives people with fewer turns more
+                weight of 1 ÷ (1 + turns − the team’s lowest active count).
               </p>
               <p>
-                Both modes use secure randomness. A bigger slice means a bigger
-                chance.
+                <strong>Wild Card</strong> doubles an absent teammate’s weight.
+                Volunteering divides their weight by three on their next
+                eligible spin. An armed shield keeps them off one spin.
               </p>
+              <p>A bigger slice means a bigger chance.</p>
             </div>
           </section>
         </div>
@@ -761,7 +818,7 @@ export default function Home() {
               <h2 id="history-heading">Pick history</h2>
               <span className="history-total">
                 {state?.totalPicks ?? 0} valid{" "}
-                {state?.totalPicks === 1 ? "pick" : "picks"}
+                {state?.totalPicks === 1 ? "turn" : "turns"}
               </span>
             </div>
             <button
@@ -778,19 +835,19 @@ export default function Home() {
             <p className="history-insight">
               {leaders.length === 1 ? (
                 <>
-                  <strong>{leaders[0].name}</strong> has been picked most often
+                  <strong>{leaders[0].name}</strong> has the most turns
                 </>
               ) : leaders.length <= 3 ? (
                 <>
                   <strong>
                     {leaders.map((person) => person.name).join(" & ")}
                   </strong>{" "}
-                  are tied for most picks
+                  are tied for most turns
                 </>
               ) : (
                 <>
                   <strong>{leaders.length} teammates</strong> are tied for most
-                  picks
+                  turns
                 </>
               )}{" "}
               — {topCount} {topCount === 1 ? "turn" : "turns"}
@@ -803,8 +860,8 @@ export default function Home() {
                 <History size={22} strokeWidth={1.5} />
               </span>
               <div>
-                <strong>{state ? "No picks yet" : "Loading history…"}</strong>
-                <p>{state ? "Spin the wheel to add the first pick." : ""}</p>
+                <strong>{state ? "No turns yet" : "Loading history…"}</strong>
+                <p>{state ? "Spin the wheel to record the first turn." : ""}</p>
               </div>
             </div>
           ) : (
@@ -812,6 +869,10 @@ export default function Home() {
               <ol className="history-list" role="list">
                 {history.map((pick) => {
                   const person = peopleById.get(pick.personId);
+                  const { label, Icon } =
+                    pick.mode === "volunteer"
+                      ? { label: "Volunteered", Icon: Hand }
+                      : modeInfo[pick.mode];
                   return (
                     <li
                       key={pick.id}
@@ -839,12 +900,7 @@ export default function Home() {
                         </div>
                         <div className="history-meta">
                           <span className={`mode-tag mode-tag-${pick.mode}`}>
-                            {pick.mode === "random" ? (
-                              <Shuffle size={12} />
-                            ) : (
-                              <Users size={12} />
-                            )}
-                            {pick.mode === "random" ? "Random" : "Balanced"}
+                            <Icon size={12} /> {label}
                           </span>
                           <time
                             dateTime={pick.createdAt}
@@ -957,7 +1013,7 @@ export default function Home() {
               onClick={() => setSortByPicks(!sortByPicks)}
               aria-pressed={sortByPicks}
             >
-              Picks {sortByPicks && <ArrowDown size={11} />}
+              Turns {sortByPicks && <ArrowDown size={11} />}
             </button>
             <span>Next odds</span>
           </div>
@@ -1049,9 +1105,33 @@ export default function Home() {
                             : sitOutIds.includes(person.id)
                               ? "Sitting out"
                               : person.lastPickedAt
-                                ? `Last picked ${new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(new Date(person.lastPickedAt))}`
-                                : "Not picked yet"}
+                                ? `Last turn ${new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(new Date(person.lastPickedAt))}`
+                                : "No turns yet"}
                         </span>
+                      )}
+                      {(person.absent ||
+                        person.shields > 0 ||
+                        (mode === "wildcard" && person.volunteerCooldown)) && (
+                        <div className="person-badges">
+                          {person.absent && (
+                            <span className="person-badge person-badge-absent">
+                              {mode === "wildcard" ? "Absent · 2×" : "Absent"}
+                            </span>
+                          )}
+                          {mode === "wildcard" && person.volunteerCooldown && (
+                            <span className="person-badge">
+                              ⅓× next eligible spin
+                            </span>
+                          )}
+                          {person.shields > 0 && (
+                            <span className="person-badge">
+                              <Shield size={11} />
+                              {person.shields}{" "}
+                              {person.shields === 1 ? "shield" : "shields"}
+                              {person.shieldArmed && " · armed"}
+                            </span>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -1061,6 +1141,32 @@ export default function Home() {
                       ? percentage(odds.get(person.id) ?? 0)
                       : "—"}
                   </span>
+                  <PersonModifiers
+                    person={person}
+                    disabled={busy || Boolean(pendingSpin)}
+                    onAttendance={() =>
+                      void mutate(
+                        `/api/people/${person.id}`,
+                        { absent: !person.absent },
+                        "PATCH",
+                      )
+                    }
+                    onVolunteer={
+                      mode === "wildcard" && person.active
+                        ? () => void goFirst(person)
+                        : undefined
+                    }
+                    onShield={
+                      person.shields > 0
+                        ? () =>
+                            void mutate(
+                              `/api/people/${person.id}`,
+                              { shieldArmed: !person.shieldArmed },
+                              "PATCH",
+                            )
+                        : undefined
+                    }
+                  />
                   {confirmingDelete === person.id && (
                     <div
                       className="member-delete-confirmation"
@@ -1148,7 +1254,8 @@ export default function Home() {
           </form>
           <div className="team-panel-footer">
             <span className="status-dot" /> {candidates.length} active ·{" "}
-            {state?.totalPicks ?? 0} picks saved
+            {state?.totalPicks ?? 0}{" "}
+            {state?.totalPicks === 1 ? "turn" : "turns"} saved
           </div>
         </aside>
       </Modal>

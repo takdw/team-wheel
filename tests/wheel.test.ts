@@ -14,6 +14,10 @@ const people = (counts: number[]): Person[] =>
     name: `Person ${index}`,
     count,
     active: true,
+    absent: false,
+    shields: 0,
+    shieldArmed: false,
+    volunteerCooldown: false,
     lastPickedAt: null,
     defaultColor: "#247b70",
     color: null,
@@ -52,6 +56,28 @@ test("paused people are excluded from the draw and its balancing baseline", () =
   assert.deepEqual(
     candidates.map((person) => person.probability),
     [2 / 3, 1 / 3],
+  );
+});
+test("Wild Card combines attendance and volunteer weights and honors armed shields", () => {
+  const roster = people([0, 1, 2, 3, 4]);
+  roster[1].absent = true;
+  roster[2].volunteerCooldown = true;
+  roster[3].absent = true;
+  roster[3].volunteerCooldown = true;
+  roster[4].shields = 1;
+  roster[4].shieldArmed = true;
+
+  const candidates = getCandidates(roster, "wildcard");
+  assert.deepEqual(
+    candidates.map((person) => person.id),
+    ["0", "1", "2", "3"],
+  );
+  [1 / 4, 1 / 2, 1 / 12, 1 / 6].forEach((expected, index) => {
+    assert.ok(Math.abs(candidates[index].probability - expected) < 1e-12);
+  });
+  assert.deepEqual(
+    getCandidates(roster, "random").map((person) => person.probability),
+    [0.2, 0.2, 0.2, 0.2, 0.2],
   );
 });
 test("selection boundaries agree with the displayed wheel segments", () => {

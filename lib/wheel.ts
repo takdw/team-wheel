@@ -1,8 +1,14 @@
-export type Mode = "random" | "balanced";
+export const spinModes = ["random", "balanced", "wildcard"] as const;
+export type Mode = (typeof spinModes)[number];
+export type PickMode = Mode | "volunteer";
 export interface Person {
   id: string;
   name: string;
   active: boolean;
+  absent: boolean;
+  shields: number;
+  shieldArmed: boolean;
+  volunteerCooldown: boolean;
   count: number;
   lastPickedAt: string | null;
   color: string | null;
@@ -21,7 +27,7 @@ export interface Pick {
   id: string;
   personId: string;
   personName: string;
-  mode: Mode;
+  mode: PickMode;
   createdAt: string;
   undoneAt: string | null;
 }
@@ -36,11 +42,13 @@ export interface Snapshot {
   totalPicks: number;
   leaders: { id: string; name: string; count: number }[];
 }
-export interface SpinResult {
+export interface TurnResult {
   pick: Pick;
+  state: Snapshot;
+}
+export interface SpinResult extends TurnResult {
   candidates: Candidate[];
   landingAngle: number;
-  state: Snapshot;
 }
 
 export function getCandidates(
@@ -49,13 +57,19 @@ export function getCandidates(
   excludedIds: readonly string[] = [],
 ): Candidate[] {
   const active = people.filter(
-    (person) => person.active && !excludedIds.includes(person.id),
+    (person) =>
+      person.active &&
+      !excludedIds.includes(person.id) &&
+      (mode !== "wildcard" || !person.shieldArmed),
   );
   if (!active.length) return [];
   const minimum = Math.min(...active.map((person) => person.count));
-  const weights = active.map((person) =>
-    mode === "random" ? 1 : 1 / (1 + person.count - minimum),
-  );
+  const weights = active.map((person) => {
+    if (mode === "balanced") return 1 / (1 + person.count - minimum);
+    if (mode === "wildcard")
+      return (person.absent ? 2 : 1) / (person.volunteerCooldown ? 3 : 1);
+    return 1;
+  });
   const total = weights.reduce((sum, weight) => sum + weight, 0);
   return active.map((person, index) => ({
     id: person.id,
