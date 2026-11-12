@@ -1903,11 +1903,13 @@ main {
   min-height: 44px;
   font-size: 13px;
 }
-.modifier-confirm-button {
+.modifier-confirm-button,
+.result-done-button {
   background: var(--green);
   color: #faffed;
 }
-.modifier-confirm-button:hover:not(:disabled) {
+.modifier-confirm-button:hover:not(:disabled),
+.result-done-button:hover {
   background: var(--green-hover);
 }
 .result-obscured {
@@ -1938,6 +1940,15 @@ main {
   font-size: clamp(24px, 7vw, 34px);
   line-height: 1.15;
   overflow-wrap: anywhere;
+}
+.volunteer-result-details {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  color: var(--muted);
+  line-height: 1.5;
+  list-style: none;
 }
 .winner-actions {
   display: grid;

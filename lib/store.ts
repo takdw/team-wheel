@@ -7,7 +7,7 @@ import type {
   PickMode,
   Snapshot,
   SpinResult,
-  TurnResult,
+  VolunteerResult,
 } from "./wheel";
 import {
   candidateLandingAngle,
@@ -37,6 +37,7 @@ interface PickRow {
   mode: PickMode;
   candidates: string;
   landing_angle: number | null;
+  effects: string | null;
   created_at: string;
   undone_at: string | null;
 }
@@ -416,7 +417,7 @@ export async function volunteer(
   id: string,
   personId: string,
   teamId = legacyTeamId,
-): Promise<TurnResult> {
+): Promise<VolunteerResult> {
   const { row, state } = await recordPick(
     db,
     teamId,
@@ -447,7 +448,14 @@ export async function volunteer(
       "This volunteer request was already used for another teammate.",
       409,
     );
-  return { pick: toPick(row), state };
+  const effects = JSON.parse(row.effects ?? "[]") as PickEffect[];
+  return {
+    pick: toPick(row),
+    state,
+    shieldEarned: effects.some(
+      (effect) => effect.personId === personId && effect.shieldDelta === 1,
+    ),
+  };
 }
 export async function undoPick(
   db: D1Database,

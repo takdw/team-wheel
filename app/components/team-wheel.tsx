@@ -49,7 +49,7 @@ import {
   type Person,
   type Snapshot,
   type SpinResult,
-  type TurnResult,
+  type VolunteerResult,
 } from "@/lib/wheel";
 import { animateWheel, spinRotation } from "@/lib/motion";
 import {
@@ -397,7 +397,9 @@ export default function TeamWheel({ team }: { team?: TeamAccess }) {
   const [inviteBusy, setInviteBusy] = useState(false);
   const [inviteError, setInviteError] = useState("");
   const [soundOn, setSoundOn] = useState(true);
-  const [outcome, setOutcome] = useState<SpinResult | TurnResult | null>(null);
+  const [outcome, setOutcome] = useState<SpinResult | VolunteerResult | null>(
+    null,
+  );
   const [revealed, setRevealed] = useState(false);
   const [winnerOpen, setWinnerOpen] = useState(false);
   const [sitOutIds, setSitOutIds] = useState<string[]>([]);
@@ -639,7 +641,7 @@ export default function TeamWheel({ team }: { team?: TeamAccess }) {
     const id = volunteerRequests.current.get(person.id) ?? crypto.randomUUID();
     volunteerRequests.current.set(person.id, id);
     try {
-      const result = await request<TurnResult>("/volunteers", {
+      const result = await request<VolunteerResult>("/volunteers", {
         id,
         personId: person.id,
       });
@@ -1040,7 +1042,7 @@ export default function TeamWheel({ team }: { team?: TeamAccess }) {
         </div>
       </main>
       <WinnerDialog
-        pick={outcome?.pick}
+        outcome={outcome}
         person={winner}
         open={winnerOpen}
         canSpin={candidates.length > 0}
@@ -1050,7 +1052,11 @@ export default function TeamWheel({ team }: { team?: TeamAccess }) {
         onClose={() => setWinnerOpen(false)}
         onSpin={spinWheel}
         onSitOut={sitOutWinner}
-        returnFocusRef={candidates.length ? spinButton : teamButton}
+        returnFocusRef={
+          outcome?.pick.mode === "volunteer" || !candidates.length
+            ? teamButton
+            : spinButton
+        }
       />
       <Modal
         id="history-drawer"

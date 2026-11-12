@@ -2,7 +2,12 @@
 
 import type { CSSProperties, RefObject } from "react";
 import { Pause, Shuffle, X } from "lucide-react";
-import { palette, type Person, type Pick } from "@/lib/wheel";
+import {
+  palette,
+  type Person,
+  type SpinResult,
+  type VolunteerResult,
+} from "@/lib/wheel";
 import { Avatar } from "./avatar";
 import { Modal } from "./modal";
 
@@ -19,7 +24,7 @@ const confetti = Array.from({ length: 28 }, (_, index) => {
 });
 
 export function WinnerDialog({
-  pick,
+  outcome,
   person,
   open,
   canSpin,
@@ -29,7 +34,7 @@ export function WinnerDialog({
   onSitOut,
   returnFocusRef,
 }: {
-  pick: Pick | undefined;
+  outcome: SpinResult | VolunteerResult | null;
   person: Person | undefined;
   open: boolean;
   canSpin: boolean;
@@ -39,6 +44,10 @@ export function WinnerDialog({
   onSitOut: () => void;
   returnFocusRef: RefObject<HTMLButtonElement | null>;
 }) {
+  const pick = outcome?.pick;
+  const volunteered = pick?.mode === "volunteer";
+  const shieldEarned =
+    outcome && "shieldEarned" in outcome ? outcome.shieldEarned : undefined;
   return (
     <Modal
       id="winner-dialog"
@@ -57,13 +66,15 @@ export function WinnerDialog({
               ))}
             </div>
           )}
-          <button
-            className="icon-button winner-close"
-            aria-label="Close result"
-            onClick={onClose}
-          >
-            <X size={20} />
-          </button>
+          {!volunteered && (
+            <button
+              className="icon-button winner-close"
+              aria-label="Close result"
+              onClick={onClose}
+            >
+              <X size={20} />
+            </button>
+          )}
           <div className="winner-dialog-content">
             <Avatar
               id={pick.personId}
@@ -73,22 +84,49 @@ export function WinnerDialog({
               className="winner-avatar winner-dialog-avatar"
             />
             <div>
-              <p className="result-caption">You’re up next</p>
-              <h2 id="winner-heading">{pick.personName}</h2>
+              {!volunteered && <p className="result-caption">You’re up next</p>}
+              <h2 id="winner-heading">
+                {pick.personName}
+                {volunteered && " volunteered"}
+              </h2>
             </div>
+            {volunteered && (
+              <ul className="volunteer-result-details" role="list">
+                <li>Turn recorded</li>
+                {shieldEarned !== undefined && (
+                  <li>
+                    {shieldEarned
+                      ? "Shield earned"
+                      : "Already at the two-shield limit"}
+                  </li>
+                )}
+                <li>⅓× weight on their next eligible Wild Card spin</li>
+              </ul>
+            )}
             <div className="winner-actions">
-              <button
-                className="button spin-button"
-                disabled={!canSpin}
-                onClick={onSpin}
-              >
-                <Shuffle size={17} /> Spin again
-              </button>
-              {person?.active && (
-                <button className="button button-secondary" onClick={onSitOut}>
-                  <Pause size={16} />
-                  {canSpinWithoutWinner ? "Sit out & spin again" : "Sit out"}
+              {volunteered ? (
+                <button className="button result-done-button" onClick={onClose}>
+                  Done
                 </button>
+              ) : (
+                <>
+                  <button
+                    className="button spin-button"
+                    disabled={!canSpin}
+                    onClick={onSpin}
+                  >
+                    <Shuffle size={17} /> Spin again
+                  </button>
+                  {person?.active && (
+                    <button
+                      className="button button-secondary"
+                      onClick={onSitOut}
+                    >
+                      <Pause size={16} />
+                      {canSpinWithoutWinner ? "Sit out & spin again" : "Sit out"}
+                    </button>
+                  )}
+                </>
               )}
             </div>
           </div>

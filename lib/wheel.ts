@@ -46,6 +46,9 @@ export interface TurnResult {
   pick: Pick;
   state: Snapshot;
 }
+export interface VolunteerResult extends TurnResult {
+  shieldEarned: boolean;
+}
 export interface SpinResult extends TurnResult {
   candidates: Candidate[];
   landingAngle: number;

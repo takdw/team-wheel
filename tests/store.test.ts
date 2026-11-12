@@ -306,10 +306,11 @@ test("volunteer turns grant at most two shields and can be retried and undone", 
       /No shield/,
     );
     const firstId = crypto.randomUUID();
-    await Promise.all([
+    const firstAttempts = await Promise.all([
       volunteer(db, firstId, person.id),
       volunteer(db, firstId, person.id),
     ]);
+    assert.ok(firstAttempts.every((turn) => turn.shieldEarned));
     const first = (await getSnapshot(db)).people[0];
     assert.equal(first.shields, 1);
     assert.equal(first.count, 1);
@@ -322,8 +323,10 @@ test("volunteer turns grant at most two shields and can be retried and undone", 
       a.pick.sequence > b.pick.sequence ? a : b,
     );
     assert.equal(latest.pick.mode, "volunteer");
+    assert.equal(latest.shieldEarned, false);
     assert.equal(latest.state.totalPicks, 3);
     assert.equal(latest.state.people[0].shields, 2);
+    assert.equal((await volunteer(db, firstId, person.id)).shieldEarned, true);
     await undoPick(db, latest.pick.id);
     assert.equal((await getSnapshot(db)).people[0].shields, 2);
     const second = next.find((turn) => turn.pick.id !== latest.pick.id)!;
