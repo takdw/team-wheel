@@ -338,6 +338,30 @@ function Wheel({
   );
 }
 
+const modifierConfirmations = {
+  absence: {
+    title: (name: string) => `Mark ${name} absent?`,
+    description: "Their weight doubles in Wild Card until you mark them present.",
+    label: "Mark absent",
+    available: (person: Person) => !person.absent,
+  },
+  shield: {
+    title: (name: string) => `Arm ${name}’s shield?`,
+    description:
+      "The shield keeps them out of their next eligible Wild Card spin and is used up.",
+    label: "Arm shield",
+    available: (person: Person) => person.shields > 0 && !person.shieldArmed,
+  },
+  volunteer: {
+    title: (name: string) => `Record a turn for ${name}?`,
+    description:
+      "They go first without spinning, earn a shield (up to two), and get one-third of their usual weight on their next eligible Wild Card spin.",
+    label: "Record turn",
+    available: (person: Person, mode: Mode) =>
+      person.active && mode === "wildcard",
+  },
+};
+
 export default function TeamWheel({ team }: { team?: TeamAccess }) {
   const apiBase = teamApiBase(team?.publicId);
   const request = useCallback(
@@ -362,6 +386,10 @@ export default function TeamWheel({ team }: { team?: TeamAccess }) {
   const historyOpen = drawer === "history";
   const [editing, setEditing] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
+  const [pendingModifier, setPendingModifier] = useState<{
+    personId: string;
+    action: keyof typeof modifierConfirmations;
+  } | null>(null);
   const [lastDeleted, setLastDeleted] = useState<Person | null>(null);
   const [sortByPicks, setSortByPicks] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -382,6 +410,7 @@ export default function TeamWheel({ team }: { team?: TeamAccess }) {
   const [loadingHistory, setLoadingHistory] = useState(false);
   const nameInput = useRef<HTMLInputElement>(null);
   const teamButton = useRef<HTMLButtonElement>(null);
+  const closeTeamButton = useRef<HTMLButtonElement>(null);
   const historyButton = useRef<HTMLButtonElement>(null);
   const spinButton = useRef<HTMLButtonElement>(null);
   const hubIcon = useRef<SVGSVGElement>(null);
@@ -461,6 +490,14 @@ export default function TeamWheel({ team }: { team?: TeamAccess }) {
   const peopleById = new Map(
     (state?.people ?? []).map((person) => [person.id, person]),
   );
+  const modifierPerson = pendingModifier
+    ? peopleById.get(pendingModifier.personId)
+    : undefined;
+  const confirmation = pendingModifier
+    ? modifierConfirmations[pendingModifier.action]
+    : null;
+  const modifierAvailable =
+    modifierPerson && confirmation?.available(modifierPerson, mode);
   const winner = outcome ? peopleById.get(outcome.pick.personId) : undefined;
   const history = [...(state?.history.items ?? []), ...(older?.items ?? [])];
   const nextCursor = older ? older.nextCursor : state?.history.nextCursor;
@@ -487,6 +524,27 @@ export default function TeamWheel({ team }: { team?: TeamAccess }) {
     setManage(false);
     setEditing(null);
     setConfirmingDelete(null);
+    setPendingModifier(null);
+  }
+  function confirmModifier() {
+    if (
+      !pendingModifier ||
+      !modifierPerson ||
+      !modifierAvailable ||
+      busy ||
+      pendingSpin
+    )
+      return;
+    setPendingModifier(null);
+    if (pendingModifier.action === "volunteer") {
+      void goFirst(modifierPerson);
+      return;
+    }
+    const values =
+      pendingModifier.action === "absence"
+        ? { absent: true }
+        : { shieldArmed: true };
+    void mutate(`/people/${modifierPerson.id}`, values, "PATCH");
   }
 
   function closeHistory() {
@@ -1163,6 +1221,7 @@ export default function TeamWheel({ team }: { team?: TeamAccess }) {
               <button
                 className="icon-button close-drawer"
                 aria-label="Close team"
+                ref={closeTeamButton}
                 onClick={closeTeam}
                 autoFocus
               >
@@ -1332,26 +1391,43 @@ export default function TeamWheel({ team }: { team?: TeamAccess }) {
                   <PersonModifiers
                     person={person}
                     disabled={busy || Boolean(pendingSpin)}
-                    onAttendance={() =>
-                      void mutate(
-                        `/people/${person.id}`,
-                        { absent: !person.absent },
-                        "PATCH",
-                      )
-                    }
+                    onAttendance={() => {
+                      if (person.absent)
+                        void mutate(
+                          `/people/${person.id}`,
+                          { absent: false },
+                          "PATCH",
+                        );
+                      else
+                        setPendingModifier({
+                          personId: person.id,
+                          action: "absence",
+                        });
+                    }}
                     onVolunteer={
                       mode === "wildcard" && person.active
-                        ? () => void goFirst(person)
+                        ? () =>
+                            setPendingModifier({
+                              personId: person.id,
+                              action: "volunteer",
+                            })
                         : undefined
                     }
                     onShield={
                       person.shields > 0
-                        ? () =>
-                            void mutate(
-                              `/people/${person.id}`,
-                              { shieldArmed: !person.shieldArmed },
-                              "PATCH",
-                            )
+                        ? () => {
+                            if (person.shieldArmed)
+                              void mutate(
+                                `/people/${person.id}`,
+                                { shieldArmed: false },
+                                "PATCH",
+                              );
+                            else
+                              setPendingModifier({
+                                personId: person.id,
+                                action: "shield",
+                              });
+                          }
                         : undefined
                     }
                   />
@@ -1451,6 +1527,46 @@ export default function TeamWheel({ team }: { team?: TeamAccess }) {
             )}
           </div>
         </aside>
+      </Modal>
+      <Modal
+        id="modifier-confirmation"
+        labelledBy="modifier-confirmation-title"
+        describedBy="modifier-confirmation-description"
+        className="modifier-confirmation"
+        open={teamOpen && Boolean(modifierPerson)}
+        onClose={() => setPendingModifier(null)}
+        returnFocusRef={closeTeamButton}
+      >
+        {confirmation && modifierPerson && (
+          <>
+            <h2 id="modifier-confirmation-title">
+              {confirmation.title(modifierPerson.name)}
+            </h2>
+            <p id="modifier-confirmation-description">
+              {modifierAvailable
+                ? confirmation.description
+                : "This action is no longer available."}
+            </p>
+            <div className="modifier-confirmation-actions">
+              <button
+                type="button"
+                className="button button-secondary"
+                onClick={() => setPendingModifier(null)}
+                autoFocus
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="button modifier-confirm-button"
+                disabled={busy || Boolean(pendingSpin) || !modifierAvailable}
+                onClick={confirmModifier}
+              >
+                {confirmation.label}
+              </button>
+            </div>
+          </>
+        )}
       </Modal>
       {syncError && (
         <footer className="page-footer" role="status">

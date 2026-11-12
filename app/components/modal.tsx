@@ -5,6 +5,7 @@ import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 export function Modal({
   id,
   labelledBy,
+  describedBy,
   className,
   open,
   onClose,
@@ -13,6 +14,7 @@ export function Modal({
 }: {
   id: string;
   labelledBy: string;
+  describedBy?: string;
   className: string;
   open: boolean;
   onClose: () => void;
@@ -49,6 +51,7 @@ export function Modal({
       id={id}
       className={className}
       aria-labelledby={labelledBy}
+      aria-describedby={describedBy}
       onClose={(event) => {
         if (event.currentTarget.open) return;
         onClose();

@@ -26,16 +26,19 @@ export function PersonModifiers({
   const id = useId();
   const anchor = `--modifiers-${id.replaceAll(":", "")}`;
   const popover = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
   const AttendanceIcon = person.absent ? UserRoundCheck : UserRoundX;
 
   function choose(action: () => void) {
     popover.current?.hidePopover();
+    trigger.current?.focus();
     action();
   }
 
   return (
     <div className="person-modifiers">
       <button
+        ref={trigger}
         type="button"
         className="icon-button modifier-trigger"
         style={{ anchorName: anchor }}
