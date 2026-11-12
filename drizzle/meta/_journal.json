@@ -57,6 +57,13 @@
       "when": 1794408116238,
       "tag": "0007_team-spaces",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1794410134606,
+      "tag": "0008_team_public_ids",
+      "breakpoints": true
     }
   ]
 }

@@ -58,12 +58,7 @@ import {
   type SpinAudio,
 } from "@/lib/spin-audio";
 import { requestJson, RequestError } from "@/lib/client-request";
-import {
-  formatTeamCode,
-  legacyTeamId,
-  teamApiBase,
-  type TeamAccess,
-} from "@/lib/team";
+import { formatTeamCode, teamApiBase, type TeamAccess } from "@/lib/team";
 import { Avatar } from "./avatar";
 import { PersonEditor } from "./person-editor";
 import { PersonModifiers } from "./person-modifiers";
@@ -344,7 +339,7 @@ function Wheel({
 }
 
 export default function TeamWheel({ team }: { team?: TeamAccess }) {
-  const apiBase = teamApiBase(team?.id ?? legacyTeamId);
+  const apiBase = teamApiBase(team?.publicId);
   const request = useCallback(
     function requestForTeam<T>(path: string, body?: unknown, method?: string) {
       return requestJson<T>(`${apiBase}${path}`, body, method);

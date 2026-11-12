@@ -83,7 +83,12 @@ export async function getSnapshot(
 ): Promise<Snapshot> {
   // D1 batches are transactions, keeping the revision and counts consistent.
   const queries = [
-    db.prepare("SELECT revision FROM wheel_state WHERE id = ?").bind(teamId),
+    db
+      .prepare(
+        `SELECT wheel_state.revision, teams.public_id AS publicId FROM teams
+        LEFT JOIN wheel_state ON wheel_state.id = teams.id WHERE teams.id = ?`,
+      )
+      .bind(teamId),
     db
       .prepare(
         `SELECT people.id, people.name, people.active, people.absent, people.shields, people.shield_armed,
@@ -113,6 +118,10 @@ export async function getSnapshot(
     ]);
     allPeople = roster.results as RosterRow[];
   }
+  const wheel = revision.results[0] as
+    | { revision: number | null; publicId: string | null }
+    | undefined;
+  const apiBase = teamApiBase(wheel?.publicId);
   const people: Person[] = allPeople
     .filter((person) => person.deleted_at === null)
     .map((person) => ({
@@ -128,14 +137,12 @@ export async function getSnapshot(
       color: person.color,
       defaultColor: person.default_color ?? personColor(person.id),
       photoUrl: person.photo_version
-        ? `${teamApiBase(teamId)}/people/${person.id}/photo?v=${person.photo_version}`
+        ? `${apiBase}/people/${person.id}/photo?v=${person.photo_version}`
         : null,
     }));
   const topCount = Math.max(0, ...allPeople.map((person) => person.count));
   return {
-    revision: Number(
-      (revision.results[0] as { revision?: number } | undefined)?.revision ?? 0,
-    ),
+    revision: wheel?.revision ?? 0,
     people,
     history: historyPage(history.results as unknown as PickRow[]),
     totalPicks: allPeople.reduce((sum, person) => sum + person.count, 0),

@@ -1,5 +1,10 @@
 import { AppError } from "./store";
-import { parseTeamId, teamCodeAlphabet, type TeamAccess } from "./team";
+import {
+  legacyTeamId,
+  teamCodeAlphabet,
+  type TeamAccess,
+  type TeamSummary,
+} from "./team";
 
 const sessionAge = 90 * 24 * 60 * 60;
 const accessWindow = 5 * 60 * 1000;
@@ -31,8 +36,13 @@ function sessionTokens(cookies: string | null) {
   for (const cookie of cookies?.split(";") ?? []) {
     const match = /^tw_team_(\d+)=([a-f0-9-]{36})$/.exec(cookie.trim());
     if (!match) continue;
-    const teamId = parseTeamId(match[1]);
-    if (teamId !== null && !tokens.has(teamId)) tokens.set(teamId, match[2]);
+    const teamId = Number(match[1]);
+    if (
+      Number.isSafeInteger(teamId) &&
+      teamId > legacyTeamId &&
+      !tokens.has(teamId)
+    )
+      tokens.set(teamId, match[2]);
   }
   return tokens;
 }
@@ -45,22 +55,39 @@ export function teamSessionCookie(
   return `${cookieName(teamId)}=${token}; Path=/; Max-Age=${sessionAge}; HttpOnly; SameSite=Lax${secure ? "; Secure" : ""}`;
 }
 
-export async function getTeamAccess(
+async function getTeamSession(
   db: D1Database,
   teamId: number,
   cookies: string | null,
-): Promise<TeamAccess | null> {
+) {
   const token = sessionTokens(cookies).get(teamId);
   if (!token) return null;
   return db
     .prepare(
-      `SELECT teams.id, teams.name,
-    CASE WHEN team_sessions.owner = 1 THEN teams.join_code ELSE NULL END AS joinCode
-    FROM team_sessions JOIN teams ON teams.id = team_sessions.team_id
-    WHERE team_sessions.token_hash = ? AND team_sessions.team_id = ? AND team_sessions.expires_at > ?`,
+      `SELECT owner FROM team_sessions
+      WHERE token_hash = ? AND team_id = ? AND expires_at > ?`,
     )
     .bind(await hash(token), teamId, Date.now())
-    .first<TeamAccess>();
+    .first<{ owner: number }>();
+}
+
+export async function getTeamAccess(
+  db: D1Database,
+  publicId: string,
+  cookies: string | null,
+): Promise<(TeamAccess & { teamId: number }) | null> {
+  if (!cookies) return null;
+  const team = await db
+    .prepare(
+      "SELECT id AS teamId, name, join_code AS joinCode FROM teams WHERE public_id = ?",
+    )
+    .bind(publicId)
+    .first<{ teamId: number; name: string; joinCode: string | null }>();
+  if (!team) return null;
+  const session = await getTeamSession(db, team.teamId, cookies);
+  return session
+    ? { ...team, publicId, joinCode: session.owner ? team.joinCode : null }
+    : null;
 }
 
 export async function getJoinedTeams(db: D1Database, cookies: string | null) {
@@ -73,15 +100,15 @@ export async function getJoinedTeams(db: D1Database, cookies: string | null) {
   const result = await db
     .prepare(
       `WITH browser_sessions(team_id, token_hash) AS (VALUES ${placeholders})
-    SELECT teams.id, teams.name FROM browser_sessions
+    SELECT teams.public_id AS publicId, teams.name FROM browser_sessions
     JOIN team_sessions ON team_sessions.token_hash = browser_sessions.token_hash
       AND team_sessions.team_id = browser_sessions.team_id
     JOIN teams ON teams.id = team_sessions.team_id
-    WHERE team_sessions.expires_at > ?
+    WHERE team_sessions.expires_at > ? AND teams.public_id IS NOT NULL
     ORDER BY teams.name COLLATE NOCASE, teams.id`,
     )
     .bind(...keys.flat(), Date.now())
-    .all<Pick<TeamAccess, "id" | "name">>();
+    .all<TeamSummary>();
   return result.results;
 }
 
@@ -111,9 +138,10 @@ export async function limitTeamAccess(
 export async function createTeam(
   db: D1Database,
   name: string,
-): Promise<{ teamId: number; token: string }> {
+): Promise<{ teamId: number; publicId: string; token: string }> {
   const token = crypto.randomUUID();
   const tokenHash = await hash(token);
+  const publicId = crypto.randomUUID();
   const now = Date.now();
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = newCode();
@@ -121,9 +149,9 @@ export async function createTeam(
       const [team] = await db.batch<{ id: number }>([
         db
           .prepare(
-            "INSERT INTO teams (name, join_code) VALUES (?, ?) RETURNING id",
+            "INSERT INTO teams (name, join_code, public_id) VALUES (?, ?, ?) RETURNING id",
           )
-          .bind(name, code),
+          .bind(name, code, publicId),
         db
           .prepare(
             `INSERT INTO team_sessions (token_hash, team_id, owner, expires_at)
@@ -132,7 +160,7 @@ export async function createTeam(
           .bind(tokenHash, now + sessionAge * 1000, code),
         db.prepare("DELETE FROM team_sessions WHERE expires_at <= ?").bind(now),
       ]);
-      return { teamId: team.results[0].id, token };
+      return { teamId: team.results[0].id, publicId, token };
     } catch (error) {
       if (
         !(error instanceof Error) ||
@@ -151,17 +179,19 @@ export async function joinTeam(
   db: D1Database,
   code: string,
   cookies: string | null,
-): Promise<{ teamId: number; token?: string }> {
+): Promise<{ teamId: number; publicId: string; token?: string }> {
   const team = await db
-    .prepare("SELECT id FROM teams WHERE join_code = ?")
+    .prepare(
+      "SELECT id AS teamId, public_id AS publicId FROM teams WHERE join_code = ? AND public_id IS NOT NULL",
+    )
     .bind(code)
-    .first<{ id: number }>();
+    .first<{ teamId: number; publicId: string }>();
   if (!team)
     throw new AppError(
       "That team code isn’t valid. Check it and try again.",
       404,
     );
-  if (await getTeamAccess(db, team.id, cookies)) return { teamId: team.id };
+  if (await getTeamSession(db, team.teamId, cookies)) return { ...team };
 
   const now = Date.now();
   const token = crypto.randomUUID();
@@ -171,7 +201,7 @@ export async function joinTeam(
         `INSERT INTO team_sessions (token_hash, team_id, expires_at)
       SELECT ?, id, ? FROM teams WHERE id = ? AND join_code = ? RETURNING team_id`,
       )
-      .bind(await hash(token), now + sessionAge * 1000, team.id, code),
+      .bind(await hash(token), now + sessionAge * 1000, team.teamId, code),
     db.prepare("DELETE FROM team_sessions WHERE expires_at <= ?").bind(now),
   ]);
   if (!session.results.length)
@@ -179,7 +209,7 @@ export async function joinTeam(
       "That team code isn’t valid. Check it and try again.",
       404,
     );
-  return { teamId: team.id, token };
+  return { ...team, token };
 }
 
 export async function rotateTeamCode(

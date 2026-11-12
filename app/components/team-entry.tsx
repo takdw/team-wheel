@@ -9,13 +9,13 @@ import {
   Plus,
 } from "lucide-react";
 import { requestJson } from "@/lib/client-request";
-import type { TeamAccess } from "@/lib/team";
+import type { TeamSummary } from "@/lib/team";
 
 export function TeamEntry({
   joinedTeams,
   joinRequired,
 }: {
-  joinedTeams: Pick<TeamAccess, "id" | "name">[];
+  joinedTeams: TeamSummary[];
   joinRequired: boolean;
 }) {
   const [creating, setCreating] = useState(false);
@@ -50,11 +50,11 @@ export function TeamEntry({
     setBusy(true);
     setError("");
     try {
-      const { teamId } = await requestJson<{ teamId: number }>(
+      const { publicId } = await requestJson<{ publicId: string }>(
         creating ? "/api/teams" : "/api/teams/join",
         creating ? { name } : { code },
       );
-      window.location.assign(`/teams/${teamId}`);
+      window.location.assign(`/${publicId}`);
     } catch (issue) {
       setError(
         issue instanceof Error ? issue.message : "Try again in a moment.",
@@ -159,8 +159,8 @@ export function TeamEntry({
             <h2 id="joined-teams-heading">Your teams</h2>
             <ul>
               {joinedTeams.map((team) => (
-                <li key={team.id}>
-                  <a href={`/teams/${team.id}`}>
+                <li key={team.publicId}>
+                  <a href={`/${team.publicId}`}>
                     <span>{team.name}</span>
                     <ArrowRight size={15} aria-hidden />
                   </a>

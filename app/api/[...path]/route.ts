@@ -16,7 +16,7 @@ import {
 import { decodePhoto, personUpdateSchema } from "@/lib/profile";
 import { spinModes } from "@/lib/wheel";
 import { usesLegacyTeam } from "@/lib/access";
-import { legacyTeamId, parseTeamId, teamCodeAlphabet } from "@/lib/team";
+import { legacyTeamId, parseTeamPublicId, teamCodeAlphabet } from "@/lib/team";
 import {
   createTeam,
   getTeamAccess,
@@ -92,7 +92,7 @@ async function handle(request: Request): Promise<Response> {
         action,
         request.headers.get("CF-Connecting-IP") ?? "local",
       );
-      const { teamId, token } =
+      const { teamId, publicId, token } =
         action === "create"
           ? await createTeam(db, z.object({ name }).parse(body).name)
           : await joinTeam(
@@ -106,21 +106,17 @@ async function handle(request: Request): Promise<Response> {
           "Set-Cookie",
           teamSessionCookie(teamId, token, url.protocol === "https:"),
         );
-      return Response.json({ teamId }, { headers: sessionHeaders });
+      return Response.json({ publicId }, { headers: sessionHeaders });
     }
 
     const scoped = /^\/api\/teams\/([^/]+)(\/.*)$/.exec(pathname);
-    const teamId =
-      legacy && !scoped
-        ? legacyTeamId
-        : !legacy && scoped
-          ? parseTeamId(scoped[1])
-          : null;
-    if (teamId === null)
+    const publicId = !legacy && scoped ? parseTeamPublicId(scoped[1]) : null;
+    if (legacy ? scoped !== null : publicId === null)
       throw new AppError("That action could not be found.", 404);
-    const access = legacy ? null : await getTeamAccess(db, teamId, cookies);
+    const access = publicId ? await getTeamAccess(db, publicId, cookies) : null;
     if (!legacy && !access)
       throw new AppError("Join this team to open its wheel.", 401);
+    const teamId = access?.teamId ?? legacyTeamId;
     const path = scoped ? scoped[2] : pathname.slice("/api".length);
 
     if (path === "/invite" && (method === "GET" || method === "POST")) {

@@ -13,6 +13,7 @@ export const teams = sqliteTable("teams", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
   joinCode: text("join_code").unique(),
+  publicId: text("public_id").unique(),
 });
 export const teamSessions = sqliteTable(
   "team_sessions",

@@ -87,22 +87,23 @@ test("invite codes grant access to one team and rotation closes the old invite",
     const cookie = (teamId: number, token: string) =>
       teamSessionCookie(teamId, token, true).split(";")[0];
     const ownerCookie = cookie(first.teamId, first.token);
-    const owner = await getTeamAccess(db, first.teamId, ownerCookie);
+    const owner = await getTeamAccess(db, first.publicId, ownerCookie);
     assert.ok(owner?.joinCode);
     assert.equal(owner.name, "Design");
+    assert.equal(await getTeamAccess(db, first.publicId, null), null);
     assert.deepEqual(
-      (await getJoinedTeams(db, ownerCookie)).map((team) => team.id),
-      [first.teamId],
+      (await getJoinedTeams(db, ownerCookie)).map((team) => team.publicId),
+      [first.publicId],
     );
     assert.deepEqual(
       await getJoinedTeams(db, cookie(second.teamId, first.token)),
       [],
     );
-    assert.equal(await getTeamAccess(db, second.teamId, ownerCookie), null);
+    assert.equal(await getTeamAccess(db, second.publicId, ownerCookie), null);
     assert.equal(
       await getTeamAccess(
         db,
-        second.teamId,
+        second.publicId,
         cookie(second.teamId, first.token),
       ),
       null,
@@ -110,14 +111,16 @@ test("invite codes grant access to one team and rotation closes the old invite",
 
     assert.deepEqual(await joinTeam(db, owner.joinCode, ownerCookie), {
       teamId: first.teamId,
+      publicId: first.publicId,
     });
     const joined = await joinTeam(db, owner.joinCode, null);
     assert.ok(joined.token);
     const memberCookie = cookie(joined.teamId, joined.token);
     assert.deepEqual(
-      { ...(await getTeamAccess(db, first.teamId, memberCookie)) },
+      { ...(await getTeamAccess(db, first.publicId, memberCookie)) },
       {
-        id: first.teamId,
+        teamId: first.teamId,
+        publicId: first.publicId,
         name: "Design",
         joinCode: null,
       },
@@ -128,8 +131,8 @@ test("invite codes grant access to one team and rotation closes the old invite",
       joinTeam(db, owner.joinCode, null),
       /code isn’t valid/,
     );
-    assert.equal((await joinTeam(db, newCode, null)).teamId, first.teamId);
-    assert.ok(await getTeamAccess(db, first.teamId, memberCookie));
+    assert.equal((await joinTeam(db, newCode, null)).publicId, first.publicId);
+    assert.ok(await getTeamAccess(db, first.publicId, memberCookie));
   } finally {
     close();
   }

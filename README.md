@@ -38,7 +38,7 @@ export CLOUDFLARE_D1_DATABASE_ID='YOUR_DATABASE_UUID'
 npm run deploy
 ```
 
-Open the resulting `https://team-wheel.<your-subdomain>.workers.dev` address to create a team. Share the team's invite link or eight-character code. Each team has its own roster, photos, and history. **Your teams** lists teams with an active session in the current browser. Sessions last 90 days. The browser that created the team can copy the invite and change the code. Changing the code invalidates old invites and keeps existing sessions active.
+Open the resulting `https://team-wheel.<your-subdomain>.workers.dev` address to create a team. Share the team's invite link or eight-character code. Each team has its own roster, photos, and history. **Your teams** lists teams with an active session in the current browser. Sessions last 90 days. Bookmark a team's `/<uuid>` address to reopen it. The browser that created the team can copy the invite and change the code. Changing the code invalidates old invites and keeps existing sessions and bookmarks active.
 
 `npm run deploy` builds, applies pending remote D1 migrations, and publishes the Worker. Subsequent deployments use the same command and retain the database. Set `CLOUDFLARE_WORKER_NAME` if the default Worker name `team-wheel` is already used. For CI, use Cloudflare's `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` environment variables as well.
 

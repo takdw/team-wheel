@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import TeamWheel from "@/app/components/team-wheel";
 import { usesLegacyTeam } from "@/lib/access";
-import { parseTeamId } from "@/lib/team";
+import { parseTeamPublicId } from "@/lib/team";
 import { getTeamAccess } from "@/lib/team-store";
 
 export const dynamic = "force-dynamic";
@@ -11,15 +11,16 @@ export const dynamic = "force-dynamic";
 export default async function TeamPage({
   params,
 }: {
-  params: Promise<{ teamId: string }>;
+  params: Promise<{ publicId: string }>;
 }) {
-  const teamId = parseTeamId((await params).teamId);
-  if (!teamId || usesLegacyTeam(env) || !env.DB) notFound();
-  const team = await getTeamAccess(
+  const publicId = parseTeamPublicId((await params).publicId);
+  if (!publicId || usesLegacyTeam(env) || !env.DB) notFound();
+  const access = await getTeamAccess(
     env.DB,
-    teamId,
+    publicId,
     (await headers()).get("Cookie"),
   );
-  if (!team) redirect("/?joinRequired=1");
-  return <TeamWheel key={teamId} team={team} />;
+  if (!access) redirect("/?joinRequired=1");
+  const { name, joinCode } = access;
+  return <TeamWheel key={publicId} team={{ publicId, name, joinCode }} />;
 }
